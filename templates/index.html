@@ -8,80 +8,64 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1e293b; min-height: 100vh; }
 
+    nav { background: #1e293b; padding: 14px 32px; display: flex; align-items: center; justify-content: space-between; }
+    .nav-brand { color: white; font-size: 16px; font-weight: 700; text-decoration: none; }
+    .nav-right { display: flex; align-items: center; gap: 14px; }
+    .client-tags { display: flex; gap: 6px; }
+    .ctag { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 4px; }
+    .ct-ai  { background: #dbeafe; color: #1d4ed8; }
+    .ct-wb  { background: #dcfce7; color: #16a34a; }
+    .ct-ch  { background: #fef9c3; color: #a16207; }
+    .nav-link { color: #94a3b8; font-size: 13px; text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: all 0.15s; }
+    .nav-link:hover { background: rgba(255,255,255,0.1); color: white; }
 
     .container { max-width: 860px; margin: 0 auto; padding: 32px 24px 80px; }
 
-    .brief-panel {
-      background: white; border-radius: 12px; padding: 24px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 20px;
-    }
+    /* Brief panel */
+    .brief-panel { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 20px; }
     .brief-panel label { display: block; font-weight: 600; font-size: 13px; color: #475569; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
-    textarea {
-      width: 100%; height: 130px; border: 1px solid #e2e8f0; border-radius: 8px;
-      padding: 12px 14px; font-size: 14px; font-family: inherit; line-height: 1.6;
-      resize: vertical; outline: none; transition: border-color 0.2s; color: #1e293b;
-    }
+    textarea { width: 100%; height: 130px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; font-size: 14px; font-family: inherit; line-height: 1.6; resize: vertical; outline: none; transition: border-color 0.2s; color: #1e293b; }
     textarea:focus { border-color: #475569; }
     .brief-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
     .hint { font-size: 12px; color: #94a3b8; max-width: 500px; }
-
-    .btn-submit {
-      background: #1e293b; color: white; border: none;
-      padding: 11px 28px; border-radius: 8px; font-size: 14px;
-      font-weight: 600; cursor: pointer; transition: background 0.15s; white-space: nowrap;
-    }
+    .btn-submit { background: #1e293b; color: white; border: none; padding: 11px 28px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s; white-space: nowrap; }
     .btn-submit:hover:not(:disabled) { background: #334155; }
     .btn-submit:disabled { background: #94a3b8; cursor: not-allowed; }
 
-    /* Save notification */
-    .save-notice {
-      display: none;
-      background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px;
-      padding: 11px 16px; margin-bottom: 16px;
-      font-size: 13px; color: #166534;
-      align-items: center; gap: 8px;
-    }
+    /* Save notice */
+    .save-notice { display: none; background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 11px 16px; margin-bottom: 16px; font-size: 13px; color: #166534; align-items: center; gap: 8px; }
     .save-notice.visible { display: flex; }
 
     /* Status bar */
-    .status-bar {
-      display: none; background: white; border-radius: 10px; padding: 14px 18px;
-      margin-bottom: 20px; border-left: 3px solid #1e293b;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08); align-items: flex-start; gap: 12px;
-    }
+    .status-bar { display: none; background: white; border-radius: 10px; padding: 14px 18px; margin-bottom: 20px; border-left: 3px solid #1e293b; box-shadow: 0 1px 3px rgba(0,0,0,0.08); align-items: flex-start; gap: 12px; }
     .status-bar.visible { display: flex; }
-    .spinner {
-      width: 16px; height: 16px; border: 2px solid #e2e8f0;
-      border-top-color: #1e293b; border-radius: 50%;
-      animation: spin 0.7s linear infinite; flex-shrink: 0; margin-top: 2px;
-    }
+    .spinner { width: 16px; height: 16px; border: 2px solid #e2e8f0; border-top-color: #1e293b; border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; margin-top: 2px; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .status-text { font-size: 13px; color: #475569; font-weight: 500; }
     .agent-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
     .chip { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 20px; transition: all 0.3s; }
     .chip-waiting { background: #f1f5f9; color: #94a3b8; }
     .chip-running { background: #dbeafe; color: #2563eb; animation: pulse 1.4s ease-in-out infinite; }
+    .chip-cascade { background: #ede9fe; color: #6d28d9; animation: pulse 1.4s ease-in-out infinite; }
     .chip-done    { background: #dcfce7; color: #16a34a; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
 
-    /* Output cards */
+    /* Output area */
     .output-area { display: none; }
     .output-area.visible { display: block; }
 
-    .card {
-      background: white; border-radius: 12px; padding: 24px;
-      margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-    }
-    .card-head {
-      display: flex; align-items: center; justify-content: space-between;
-      margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #f1f5f9;
-    }
-    .badge {
-      font-size: 12px; font-weight: 700; padding: 4px 10px;
-      border-radius: 6px; letter-spacing: 0.3px;
-    }
+    /* Stage divider */
+    .stage-divider { display: flex; align-items: center; gap: 12px; margin: 24px 0 16px; }
+    .stage-divider span { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #94a3b8; white-space: nowrap; }
+    .stage-divider::before, .stage-divider::after { content: ''; flex: 1; height: 1px; background: #e2e8f0; }
+
+    /* Cards */
+    .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #f1f5f9; }
+    .badge { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 6px; letter-spacing: 0.3px; }
     .badge-marcus   { background: #f1f5f9; color: #1e293b; }
     .badge-review   { background: #1e293b; color: white; }
+    .badge-cascade-review { background: #1e293b; color: white; }
     .badge-callum   { background: #dbeafe; color: #1d4ed8; }
     .badge-priya    { background: #fce7f3; color: #9d174d; }
     .badge-dante    { background: #ede9fe; color: #6d28d9; }
@@ -90,22 +74,32 @@
     .badge-nadia    { background: #ffedd5; color: #9a3412; }
     .badge-zara     { background: #e0f2fe; color: #0369a1; }
     .badge-reeva    { background: #fdf4ff; color: #7e22ce; }
+    .review-card { border-left: 3px solid #1e293b; }
 
-    /* Card action buttons */
+    /* Third-party flag card */
+    .flag-card { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 16px 20px; margin-bottom: 12px; display: flex; gap: 12px; align-items: flex-start; }
+    .flag-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+    .flag-title { font-size: 13px; font-weight: 700; color: #92400e; margin-bottom: 4px; }
+    .flag-msg { font-size: 13px; color: #78350f; line-height: 1.5; }
+
+    /* Assembly card */
+    .assembly-card { background: white; border: 2px solid #1e293b; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .assembly-card .card-head { border-bottom-color: #e2e8f0; }
+    .assembly-badge { background: #1e293b; color: white; font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 6px; letter-spacing: 0.3px; }
+    .assembly-preview { background: #f8fafc; border-radius: 8px; padding: 12px 16px; margin-top: 14px; font-size: 13px; color: #475569; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .assembly-filename { font-family: monospace; font-size: 12px; color: #1e293b; }
+    .view-btn { background: #1e293b; color: white; border: none; padding: 8px 16px; border-radius: 7px; font-size: 12px; font-weight: 700; cursor: pointer; text-decoration: none; white-space: nowrap; transition: background 0.15s; }
+    .view-btn:hover { background: #334155; }
+
+    /* Action buttons */
     .card-actions { display: flex; gap: 6px; align-items: center; }
-    .action-btn {
-      font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 6px;
-      cursor: pointer; border: 1px solid #e2e8f0; background: none;
-      color: #64748b; transition: all 0.15s; white-space: nowrap;
-    }
+    .action-btn { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 6px; cursor: pointer; border: 1px solid #e2e8f0; background: none; color: #64748b; transition: all 0.15s; white-space: nowrap; }
     .action-btn:hover { background: #f8fafc; color: #1e293b; }
     .action-btn.copied { border-color: #86efac; color: #16a34a; }
     .action-btn.pdf-btn { border-color: #bfdbfe; color: #2563eb; }
     .action-btn.pdf-btn:hover { background: #eff6ff; }
 
-    .review-card { border-left: 3px solid #1e293b; }
-
-    /* Markdown content */
+    /* Markdown */
     .md { font-size: 14px; line-height: 1.75; color: #334155; }
     .md h1 { font-size: 17px; font-weight: 700; color: #1e293b; margin: 18px 0 8px; }
     .md h2 { font-size: 15px; font-weight: 700; color: #1e293b; margin: 16px 0 6px; }
@@ -116,7 +110,6 @@
     .md strong { font-weight: 700; color: #1e293b; }
     .md em { font-style: italic; }
     .md hr { border: none; border-top: 1px solid #e2e8f0; margin: 16px 0; }
-    .md blockquote { border-left: 3px solid #e2e8f0; padding-left: 14px; color: #64748b; margin: 12px 0; }
     .md table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 13px; }
     .md th, .md td { border: 1px solid #e2e8f0; padding: 8px 12px; text-align: left; }
     .md th { background: #f8fafc; font-weight: 600; }
@@ -124,18 +117,15 @@
 </head>
 <body>
 
-<nav style="background:#1e293b;padding:14px 32px;display:flex;align-items:center;justify-content:space-between;">
-  <div style="display:flex;align-items:baseline;gap:12px;">
-    <a href="/" style="color:white;font-size:16px;font-weight:700;text-decoration:none;">Marcus</a>
-    <span style="color:#64748b;font-size:13px;">Marketing Command Centre</span>
-  </div>
-  <div style="display:flex;align-items:center;gap:10px;">
-    <div style="display:flex;gap:6px;">
-      <span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:4px;background:#dbeafe;color:#1d4ed8;">AI Living</span>
-      <span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:4px;background:#dcfce7;color:#16a34a;">WiBiz</span>
-      <span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:4px;background:#fef9c3;color:#a16207;">Charter</span>
+<nav>
+  <a href="/" class="nav-brand">Marcus</a>
+  <div class="nav-right">
+    <div class="client-tags">
+      <span class="ctag ct-ai">AI Living</span>
+      <span class="ctag ct-wb">WiBiz</span>
+      <span class="ctag ct-ch">Charter</span>
     </div>
-    <a href="/outputs" style="color:#94a3b8;font-size:13px;text-decoration:none;padding:6px 12px;border-radius:6px;margin-left:8px;transition:all 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.1)';this.style.color='white'" onmouseout="this.style.background='';this.style.color='#94a3b8'">Outputs</a>
+    <a href="/outputs" class="nav-link">Outputs</a>
   </div>
 </nav>
 
@@ -143,9 +133,9 @@
 
   <div class="brief-panel">
     <label>Brief</label>
-    <textarea id="brief" placeholder="Example: AI Living. I need three LinkedIn posts for Nicklaus targeting Singapore property managers. Angle: the problem with WhatsApp as a resident communication tool. Professional tone, 150–200 words each."></textarea>
+    <textarea id="brief" placeholder="Example: AI Living. Brand foundation brief for The Meridien condo development. We need the full brand identity — positioning, tone, visual direction — ready to cascade into website copy, one-pager, and design brief."></textarea>
     <div class="brief-footer">
-      <span class="hint">Always include: client · platform · audience · angle. Marcus handles the rest.</span>
+      <span class="hint">Include: client · deliverable type · audience · angle. Cascade runs automatically after Marcus approves.</span>
       <div style="display:flex;align-items:center;gap:12px;">
         <span style="font-size:12px;color:#94a3b8;" id="char-count"></span>
         <button class="btn-submit" id="submit-btn" onclick="submitBrief()">Submit Brief</button>
@@ -168,43 +158,72 @@
 
   <div class="output-area" id="output-area">
 
+    <!-- Stage 1 -->
     <div class="card" id="analysis-card" style="display:none;">
       <div class="card-head">
         <span class="badge badge-marcus">Marcus — Brief Analysis</span>
         <div class="card-actions">
           <button class="action-btn" id="copy-analysis" onclick="copyCard('analysis-content','copy-analysis')">Copy</button>
           <button class="action-btn" id="dl-analysis-md" onclick="downloadMd('analysis')">⬇ MD</button>
-          <button class="action-btn pdf-btn" id="dl-analysis-pdf" onclick="openPrint('analysis')">⬇ PDF</button>
+          <button class="action-btn pdf-btn" onclick="openPrint('analysis')">⬇ PDF</button>
         </div>
       </div>
       <div class="md" id="analysis-content"></div>
     </div>
 
-    <div id="specialists-area"></div>
+    <div id="stage1-area"></div>
 
     <div class="card review-card" id="review-card" style="display:none;">
       <div class="card-head">
-        <span class="badge badge-review">Marcus — Final Review</span>
+        <span class="badge badge-review">Marcus — Stage 1 Review</span>
         <div class="card-actions">
           <button class="action-btn" id="copy-review" onclick="copyCard('review-content','copy-review')">Copy</button>
-          <button class="action-btn" id="dl-review-md" onclick="downloadMd('review')">⬇ MD</button>
-          <button class="action-btn pdf-btn" id="dl-review-pdf" onclick="openPrint('review')">⬇ PDF</button>
-          <button class="action-btn pdf-btn" style="font-weight:700;" id="dl-full-pdf" onclick="openPrint('full')">⬇ Full PDF</button>
+          <button class="action-btn pdf-btn" onclick="openPrint('review')">⬇ PDF</button>
         </div>
       </div>
       <div class="md" id="review-content"></div>
     </div>
 
-  </div>
+    <!-- Cascade stage -->
+    <div id="cascade-divider" style="display:none;" class="stage-divider"><span>Cascade — Stage 2</span></div>
+    <div id="cascade-area"></div>
 
+    <div class="card review-card" id="cascade-review-card" style="display:none;">
+      <div class="card-head">
+        <span class="badge badge-cascade-review">Marcus — Cascade Review</span>
+        <div class="card-actions">
+          <button class="action-btn" id="copy-cr" onclick="copyCard('cascade-review-content','copy-cr')">Copy</button>
+          <button class="action-btn pdf-btn" onclick="openPrint('full')">⬇ Full PDF</button>
+        </div>
+      </div>
+      <div class="md" id="cascade-review-content"></div>
+    </div>
+
+    <!-- Assembly -->
+    <div id="assembly-divider" style="display:none;" class="stage-divider"><span>Final Assembly</span></div>
+    <div id="assembly-card" class="assembly-card" style="display:none;">
+      <div class="card-head">
+        <span class="assembly-badge" id="assembly-badge">Assembled Output</span>
+        <div class="card-actions">
+          <button class="action-btn" id="dl-assembly-md" onclick="downloadAssembly()">⬇ Download</button>
+        </div>
+      </div>
+      <div style="font-size:13px;color:#475569;margin-bottom:12px;" id="assembly-desc"></div>
+      <div class="assembly-preview">
+        <span class="assembly-filename" id="assembly-filename"></span>
+        <a class="view-btn" id="assembly-view-btn" href="#" target="_blank">Open →</a>
+      </div>
+    </div>
+
+  </div>
 </div>
 
 <script>
-// ── State ─────────────────────────────────────────────────────────
-let currentJobId = null;
+let currentJobId  = null;
+let assemblyFile  = null;
 const chips = {};
 
-// ── Markdown renderer ────────────────────────────────────────────
+// ── Markdown renderer ─────────────────────────────────────────────
 function md(raw) {
   if (!raw) return '';
   let t = raw
@@ -216,39 +235,29 @@ function md(raw) {
     .replace(/^## (.+)$/gm,'<h2>$1</h2>')
     .replace(/^# (.+)$/gm,'<h1>$1</h1>')
     .replace(/^> (.+)$/gm,'<blockquote>$1</blockquote>');
-
-  // Tables
-  t = t.replace(/(\|.+\|\n?)+/g, tableBlock => {
-    const rows = tableBlock.trim().split('\n').filter(r => !/^\|[-| ]+\|$/.test(r));
-    if (rows.length < 1) return tableBlock;
-    const makeRow = (r, tag) => '<tr>' + r.split('|').filter((_,i,a)=>i>0&&i<a.length-1).map(c=>`<${tag}>${c.trim()}</${tag}>`).join('') + '</tr>';
-    const [head, ...body] = rows;
-    return `<table><thead>${makeRow(head,'th')}</thead><tbody>${body.map(r=>makeRow(r,'td')).join('')}</tbody></table>`;
+  t = t.replace(/(\|.+\|\n?)+/g, block => {
+    const rows = block.trim().split('\n').filter(r => !/^\|[-| ]+\|$/.test(r));
+    if (!rows.length) return block;
+    const row = (r, tag) => '<tr>' + r.split('|').filter((_,i,a)=>i>0&&i<a.length-1).map(c=>`<${tag}>${c.trim()}</${tag}>`).join('') + '</tr>';
+    const [h,...b] = rows;
+    return `<table><thead>${row(h,'th')}</thead><tbody>${b.map(r=>row(r,'td')).join('')}</tbody></table>`;
   });
-
-  // Lists
   t = t.replace(/(^[-•] .+$\n?)+/gm, block => {
-    const items = block.trim().split('\n').map(l => `<li>${l.replace(/^[-•] /,'')}</li>`).join('');
-    return `<ul>${items}</ul>`;
+    return '<ul>' + block.trim().split('\n').map(l=>`<li>${l.replace(/^[-•] /,'')}</li>`).join('') + '</ul>';
   });
-
-  // Paragraphs
-  t = t.split(/\n\n+/).map(chunk => {
+  return t.split(/\n\n+/).map(chunk => {
     chunk = chunk.trim();
     if (!chunk) return '';
     if (/^<(h[1-6]|ul|ol|table|blockquote|hr)/.test(chunk)) return chunk;
     return `<p>${chunk.replace(/\n/g,'<br>')}</p>`;
   }).join('');
-
-  return t;
 }
 
-// ── Chip management ───────────────────────────────────────────────
+// ── Chips ─────────────────────────────────────────────────────────
 function setChip(name, status) {
   if (!chips[name]) {
     const el = document.createElement('span');
     el.className = 'chip chip-waiting';
-    el.id = 'chip-' + name;
     el.textContent = name.charAt(0).toUpperCase() + name.slice(1);
     document.getElementById('agent-chips').appendChild(el);
     chips[name] = el;
@@ -257,33 +266,24 @@ function setChip(name, status) {
 }
 
 // ── Copy ──────────────────────────────────────────────────────────
-function copyCard(contentId, btnId) {
-  navigator.clipboard.writeText(document.getElementById(contentId).innerText).then(() => {
-    const btn = document.getElementById(btnId);
-    btn.textContent = 'Copied';
-    btn.classList.add('copied');
-    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+function copyCard(cid, bid) {
+  navigator.clipboard.writeText(document.getElementById(cid).innerText).then(() => {
+    const b = document.getElementById(bid);
+    b.textContent = 'Copied'; b.classList.add('copied');
+    setTimeout(() => { b.textContent = 'Copy'; b.classList.remove('copied'); }, 2000);
   });
 }
 
-// ── Export helpers ────────────────────────────────────────────────
-function downloadMd(agent) {
-  if (!currentJobId) return;
-  const a = document.createElement('a');
-  a.href = `/api/export/${currentJobId}/${agent}.md`;
-  a.click();
-}
+// ── Exports ───────────────────────────────────────────────────────
+function downloadMd(agent) { if (currentJobId) window.location = `/api/export/${currentJobId}/${agent}.md`; }
+function openPrint(agent)  { if (currentJobId) window.open(`/api/export/${currentJobId}/${agent}/print`, '_blank'); }
+function downloadAssembly(){ if (assemblyFile) window.location = `/outputs/download/${assemblyFile}`; }
 
-function openPrint(agent) {
-  if (!currentJobId) return;
-  window.open(`/api/export/${currentJobId}/${agent}/print`, '_blank');
-}
-
-// ── Specialist card ───────────────────────────────────────────────
-function addSpecialistCard(agent, content) {
-  const area = document.getElementById('specialists-area');
-  const cid  = 'content-' + agent;
-  const bid  = 'copy-' + agent;
+// ── Specialist card (stage 1 or cascade) ─────────────────────────
+function addAgentCard(agent, content, containerId) {
+  const area = document.getElementById(containerId);
+  const cid  = `content-${containerId}-${agent}`;
+  const bid  = `copy-${containerId}-${agent}`;
   const card = document.createElement('div');
   card.className = 'card';
   card.innerHTML = `
@@ -300,35 +300,105 @@ function addSpecialistCard(agent, content) {
   setChip(agent, 'done');
 }
 
+// ── Third-party flag card ─────────────────────────────────────────
+function addFlagCard(flag, message) {
+  const titles = {
+    video_production: 'Video Production — Manual Step Required',
+    social_images:    'Static Images — Connection Required',
+    publishing:       'Publishing — Connection Required',
+  };
+  const area = document.getElementById('cascade-area');
+  const card = document.createElement('div');
+  card.className = 'flag-card';
+  card.innerHTML = `
+    <div class="flag-icon">⚠️</div>
+    <div>
+      <div class="flag-title">${titles[flag] || flag}</div>
+      <div class="flag-msg">${message}</div>
+    </div>`;
+  area.appendChild(card);
+}
+
 // ── Event handler ─────────────────────────────────────────────────
 function handleEvent(e) {
   const ev = JSON.parse(e.data);
   switch (ev.type) {
+
     case 'status':
       document.getElementById('status-text').textContent = ev.message;
       break;
+
     case 'agents_identified':
       ev.agents.forEach(a => setChip(a, 'running'));
       break;
+
     case 'marcus_analysis':
       document.getElementById('analysis-content').innerHTML = md(ev.content);
       document.getElementById('analysis-card').style.display = 'block';
       break;
+
     case 'specialist':
-      addSpecialistCard(ev.agent, ev.content);
+      addAgentCard(ev.agent, ev.content, 'stage1-area');
       break;
+
     case 'review':
       document.getElementById('review-content').innerHTML = md(ev.content);
       document.getElementById('review-card').style.display = 'block';
       break;
+
+    case 'cascade_start':
+      document.getElementById('cascade-divider').style.display = 'flex';
+      ev.agents.forEach(a => setChip(a, 'cascade'));
+      break;
+
+    case 'cascade_output':
+      addAgentCard(ev.agent, ev.content, 'cascade-area');
+      break;
+
+    case 'cascade_review':
+      document.getElementById('cascade-review-content').innerHTML = md(ev.content);
+      document.getElementById('cascade-review-card').style.display = 'block';
+      break;
+
+    case 'third_party_flag':
+      addFlagCard(ev.flag, ev.message);
+      break;
+
+    case 'assembly_start':
+      document.getElementById('assembly-divider').style.display = 'flex';
+      document.getElementById('status-text').textContent = `Assembling ${ev.assembly_type.replace(/_/g,' ')}...`;
+      break;
+
+    case 'assembly_done': {
+      assemblyFile = ev.filename;
+      const labels = {
+        html_website:  'Complete HTML Website',
+        html_onepager: 'HTML One-Pager',
+        html_deck:     'HTML Presentation Deck',
+        social_pack:   'Social Media Content Pack',
+      };
+      const isHtml = ev.filename.endsWith('.html');
+      document.getElementById('assembly-badge').textContent = labels[ev.assembly_type] || 'Assembled Output';
+      document.getElementById('assembly-desc').textContent  =
+        isHtml
+          ? 'Your assembled file is ready. Click Open to view it in your browser, or Download to save.'
+          : 'Your content pack is ready. Click Download to save the markdown file.';
+      document.getElementById('assembly-filename').textContent = ev.filename;
+      document.getElementById('assembly-view-btn').href = `/outputs/view/${ev.filename}`;
+      if (!isHtml) document.getElementById('assembly-view-btn').textContent = 'View →';
+      document.getElementById('assembly-card').style.display = 'block';
+      break;
+    }
+
     case 'done':
       currentJobId = ev.job_id;
       document.getElementById('status-bar').classList.remove('visible');
       document.getElementById('submit-btn').disabled = false;
       document.getElementById('save-notice-text').textContent =
-        `Auto-saved to outputs/${ev.saved_as} — use ⬇ buttons above to download individual sections.`;
+        `Auto-saved to outputs/${ev.saved_as}`;
       document.getElementById('save-notice').classList.add('visible');
       break;
+
     case 'error':
       document.getElementById('status-text').textContent = 'Error: ' + ev.message;
       document.getElementById('submit-btn').disabled = false;
@@ -343,16 +413,22 @@ async function submitBrief() {
 
   const btn = document.getElementById('submit-btn');
   btn.disabled = true;
-  currentJobId = null;
+  currentJobId = null; assemblyFile = null;
 
-  // Reset
-  document.getElementById('analysis-card').style.display = 'none';
-  document.getElementById('review-card').style.display   = 'none';
-  document.getElementById('specialists-area').innerHTML  = '';
-  document.getElementById('agent-chips').innerHTML       = '';
+  ['analysis-card','review-card','cascade-review-card','assembly-card'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+  ['cascade-divider','assembly-divider'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+  ['stage1-area','cascade-area'].forEach(id => {
+    document.getElementById(id).innerHTML = '';
+  });
+  ['analysis-content','review-content','cascade-review-content'].forEach(id => {
+    document.getElementById(id).innerHTML = '';
+  });
+  document.getElementById('agent-chips').innerHTML = '';
   document.getElementById('save-notice').classList.remove('visible');
-  document.getElementById('analysis-content').innerHTML = '';
-  document.getElementById('review-content').innerHTML   = '';
   Object.keys(chips).forEach(k => delete chips[k]);
 
   document.getElementById('status-bar').classList.add('visible');
@@ -361,39 +437,35 @@ async function submitBrief() {
 
   try {
     const resp = await fetch('/api/brief', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ brief })
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({brief})
     });
-    const { job_id, error } = await resp.json();
+    const {job_id, error} = await resp.json();
     if (error) throw new Error(error);
 
     const src = new EventSource(`/api/stream/${job_id}`);
-    src.onmessage = (e) => {
+    src.onmessage = e => {
       handleEvent(e);
       const ev = JSON.parse(e.data);
       if (ev.type === 'done' || ev.type === 'error') src.close();
     };
     src.onerror = () => {
       document.getElementById('status-text').textContent = 'Connection lost. Please try again.';
-      btn.disabled = false;
-      src.close();
+      btn.disabled = false; src.close();
     };
-  } catch (err) {
+  } catch(err) {
     document.getElementById('status-text').textContent = 'Error: ' + err.message;
     btn.disabled = false;
   }
 }
 
-// ── Char count + Enter to submit ─────────────────────────────────
-document.getElementById('brief').addEventListener('input', function () {
+document.getElementById('brief').addEventListener('input', function() {
   const n = this.value.length;
   document.getElementById('char-count').textContent = n ? n + ' chars' : '';
 });
-document.getElementById('brief').addEventListener('keydown', function (e) {
+document.getElementById('brief').addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitBrief(); }
 });
 </script>
-
 </body>
 </html>

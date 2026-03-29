@@ -1150,7 +1150,7 @@ async def process_job(job_id: str, brief: str) -> None:
 async def login_page(request: Request):
     if request.session.get("authenticated"):
         return RedirectResponse("/", status_code=302)
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request=request, name="login.html", context={"error": None})
 
 @app.post("/login", response_class=HTMLResponse)
 async def login_submit(request: Request):
@@ -1161,8 +1161,7 @@ async def login_submit(request: Request):
             secrets.compare_digest(password, HTTP_PASS)):
         request.session["authenticated"] = True
         return RedirectResponse("/", status_code=302)
-    return templates.TemplateResponse("login.html", {"request": request,
-                                                      "error": "Incorrect username or password."})
+    return templates.TemplateResponse(request=request, name="login.html", context={"error": "Incorrect username or password."})
 
 @app.get("/logout")
 async def logout(request: Request):
@@ -1171,7 +1170,7 @@ async def logout(request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="index.html")
 
 @app.post("/api/brief")
 async def start_brief(request: Request):

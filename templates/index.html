@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marcus — Marketing Command</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1e293b; min-height: 100vh; }
+
+
+    .container { max-width: 860px; margin: 0 auto; padding: 32px 24px 80px; }
+
+    .brief-panel {
+      background: white; border-radius: 12px; padding: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 20px;
+    }
+    .brief-panel label { display: block; font-weight: 600; font-size: 13px; color: #475569; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+    textarea {
+      width: 100%; height: 130px; border: 1px solid #e2e8f0; border-radius: 8px;
+      padding: 12px 14px; font-size: 14px; font-family: inherit; line-height: 1.6;
+      resize: vertical; outline: none; transition: border-color 0.2s; color: #1e293b;
+    }
+    textarea:focus { border-color: #475569; }
+    .brief-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
+    .hint { font-size: 12px; color: #94a3b8; max-width: 500px; }
+
+    .btn-submit {
+      background: #1e293b; color: white; border: none;
+      padding: 11px 28px; border-radius: 8px; font-size: 14px;
+      font-weight: 600; cursor: pointer; transition: background 0.15s; white-space: nowrap;
+    }
+    .btn-submit:hover:not(:disabled) { background: #334155; }
+    .btn-submit:disabled { background: #94a3b8; cursor: not-allowed; }
+
+    /* Save notification */
+    .save-notice {
+      display: none;
+      background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px;
+      padding: 11px 16px; margin-bottom: 16px;
+      font-size: 13px; color: #166534;
+      align-items: center; gap: 8px;
+    }
+    .save-notice.visible { display: flex; }
+
+    /* Status bar */
+    .status-bar {
+      display: none; background: white; border-radius: 10px; padding: 14px 18px;
+      margin-bottom: 20px; border-left: 3px solid #1e293b;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08); align-items: flex-start; gap: 12px;
+    }
+    .status-bar.visible { display: flex; }
+    .spinner {
+      width: 16px; height: 16px; border: 2px solid #e2e8f0;
+      border-top-color: #1e293b; border-radius: 50%;
+      animation: spin 0.7s linear infinite; flex-shrink: 0; margin-top: 2px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .status-text { font-size: 13px; color: #475569; font-weight: 500; }
+    .agent-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+    .chip { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 20px; transition: all 0.3s; }
+    .chip-waiting { background: #f1f5f9; color: #94a3b8; }
+    .chip-running { background: #dbeafe; color: #2563eb; animation: pulse 1.4s ease-in-out infinite; }
+    .chip-done    { background: #dcfce7; color: #16a34a; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+    /* Output cards */
+    .output-area { display: none; }
+    .output-area.visible { display: block; }
+
+    .card {
+      background: white; border-radius: 12px; padding: 24px;
+      margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .card-head {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #f1f5f9;
+    }
+    .badge {
+      font-size: 12px; font-weight: 700; padding: 4px 10px;
+      border-radius: 6px; letter-spacing: 0.3px;
+    }
+    .badge-marcus   { background: #f1f5f9; color: #1e293b; }
+    .badge-review   { background: #1e293b; color: white; }
+    .badge-callum   { background: #dbeafe; color: #1d4ed8; }
+    .badge-priya    { background: #fce7f3; color: #9d174d; }
+    .badge-dante    { background: #ede9fe; color: #6d28d9; }
+    .badge-suki     { background: #fef3c7; color: #92400e; }
+    .badge-felix    { background: #d1fae5; color: #065f46; }
+    .badge-nadia    { background: #ffedd5; color: #9a3412; }
+    .badge-zara     { background: #e0f2fe; color: #0369a1; }
+    .badge-reeva    { background: #fdf4ff; color: #7e22ce; }
+
+    /* Card action buttons */
+    .card-actions { display: flex; gap: 6px; align-items: center; }
+    .action-btn {
+      font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 6px;
+      cursor: pointer; border: 1px solid #e2e8f0; background: none;
+      color: #64748b; transition: all 0.15s; white-space: nowrap;
+    }
+    .action-btn:hover { background: #f8fafc; color: #1e293b; }
+    .action-btn.copied { border-color: #86efac; color: #16a34a; }
+    .action-btn.pdf-btn { border-color: #bfdbfe; color: #2563eb; }
+    .action-btn.pdf-btn:hover { background: #eff6ff; }
+
+    .review-card { border-left: 3px solid #1e293b; }
+
+    /* Markdown content */
+    .md { font-size: 14px; line-height: 1.75; color: #334155; }
+    .md h1 { font-size: 17px; font-weight: 700; color: #1e293b; margin: 18px 0 8px; }
+    .md h2 { font-size: 15px; font-weight: 700; color: #1e293b; margin: 16px 0 6px; }
+    .md h3 { font-size: 14px; font-weight: 700; color: #1e293b; margin: 14px 0 6px; }
+    .md p  { margin-bottom: 12px; }
+    .md ul, .md ol { padding-left: 20px; margin-bottom: 12px; }
+    .md li { margin-bottom: 4px; }
+    .md strong { font-weight: 700; color: #1e293b; }
+    .md em { font-style: italic; }
+    .md hr { border: none; border-top: 1px solid #e2e8f0; margin: 16px 0; }
+    .md blockquote { border-left: 3px solid #e2e8f0; padding-left: 14px; color: #64748b; margin: 12px 0; }
+    .md table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 13px; }
+    .md th, .md td { border: 1px solid #e2e8f0; padding: 8px 12px; text-align: left; }
+    .md th { background: #f8fafc; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+<nav style="background:#1e293b;padding:14px 32px;display:flex;align-items:center;justify-content:space-between;">
+  <div style="display:flex;align-items:baseline;gap:12px;">
+    <a href="/" style="color:white;font-size:16px;font-weight:700;text-decoration:none;">Marcus</a>
+    <span style="color:#64748b;font-size:13px;">Marketing Command Centre</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <div style="display:flex;gap:6px;">
+      <span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:4px;background:#dbeafe;color:#1d4ed8;">AI Living</span>
+      <span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:4px;background:#dcfce7;color:#16a34a;">WiBiz</span>
+      <span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:4px;background:#fef9c3;color:#a16207;">Charter</span>
+    </div>
+    <a href="/outputs" style="color:#94a3b8;font-size:13px;text-decoration:none;padding:6px 12px;border-radius:6px;margin-left:8px;transition:all 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.1)';this.style.color='white'" onmouseout="this.style.background='';this.style.color='#94a3b8'">Outputs</a>
+  </div>
+</nav>
+
+<div class="container">
+
+  <div class="brief-panel">
+    <label>Brief</label>
+    <textarea id="brief" placeholder="Example: AI Living. I need three LinkedIn posts for Nicklaus targeting Singapore property managers. Angle: the problem with WhatsApp as a resident communication tool. Professional tone, 150–200 words each."></textarea>
+    <div class="brief-footer">
+      <span class="hint">Always include: client · platform · audience · angle. Marcus handles the rest.</span>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span style="font-size:12px;color:#94a3b8;" id="char-count"></span>
+        <button class="btn-submit" id="submit-btn" onclick="submitBrief()">Submit Brief</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="save-notice" id="save-notice">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M13.3 4.3L6 11.6 2.7 8.3" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span id="save-notice-text">Output auto-saved.</span>
+  </div>
+
+  <div class="status-bar" id="status-bar">
+    <div class="spinner"></div>
+    <div>
+      <div class="status-text" id="status-text">Initialising...</div>
+      <div class="agent-chips" id="agent-chips"></div>
+    </div>
+  </div>
+
+  <div class="output-area" id="output-area">
+
+    <div class="card" id="analysis-card" style="display:none;">
+      <div class="card-head">
+        <span class="badge badge-marcus">Marcus — Brief Analysis</span>
+        <div class="card-actions">
+          <button class="action-btn" id="copy-analysis" onclick="copyCard('analysis-content','copy-analysis')">Copy</button>
+          <button class="action-btn" id="dl-analysis-md" onclick="downloadMd('analysis')">⬇ MD</button>
+          <button class="action-btn pdf-btn" id="dl-analysis-pdf" onclick="openPrint('analysis')">⬇ PDF</button>
+        </div>
+      </div>
+      <div class="md" id="analysis-content"></div>
+    </div>
+
+    <div id="specialists-area"></div>
+
+    <div class="card review-card" id="review-card" style="display:none;">
+      <div class="card-head">
+        <span class="badge badge-review">Marcus — Final Review</span>
+        <div class="card-actions">
+          <button class="action-btn" id="copy-review" onclick="copyCard('review-content','copy-review')">Copy</button>
+          <button class="action-btn" id="dl-review-md" onclick="downloadMd('review')">⬇ MD</button>
+          <button class="action-btn pdf-btn" id="dl-review-pdf" onclick="openPrint('review')">⬇ PDF</button>
+          <button class="action-btn pdf-btn" style="font-weight:700;" id="dl-full-pdf" onclick="openPrint('full')">⬇ Full PDF</button>
+        </div>
+      </div>
+      <div class="md" id="review-content"></div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────
+let currentJobId = null;
+const chips = {};
+
+// ── Markdown renderer ────────────────────────────────────────────
+function md(raw) {
+  if (!raw) return '';
+  let t = raw
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/^---+$/gm,'<hr>')
+    .replace(/^### (.+)$/gm,'<h3>$1</h3>')
+    .replace(/^## (.+)$/gm,'<h2>$1</h2>')
+    .replace(/^# (.+)$/gm,'<h1>$1</h1>')
+    .replace(/^> (.+)$/gm,'<blockquote>$1</blockquote>');
+
+  // Tables
+  t = t.replace(/(\|.+\|\n?)+/g, tableBlock => {
+    const rows = tableBlock.trim().split('\n').filter(r => !/^\|[-| ]+\|$/.test(r));
+    if (rows.length < 1) return tableBlock;
+    const makeRow = (r, tag) => '<tr>' + r.split('|').filter((_,i,a)=>i>0&&i<a.length-1).map(c=>`<${tag}>${c.trim()}</${tag}>`).join('') + '</tr>';
+    const [head, ...body] = rows;
+    return `<table><thead>${makeRow(head,'th')}</thead><tbody>${body.map(r=>makeRow(r,'td')).join('')}</tbody></table>`;
+  });
+
+  // Lists
+  t = t.replace(/(^[-•] .+$\n?)+/gm, block => {
+    const items = block.trim().split('\n').map(l => `<li>${l.replace(/^[-•] /,'')}</li>`).join('');
+    return `<ul>${items}</ul>`;
+  });
+
+  // Paragraphs
+  t = t.split(/\n\n+/).map(chunk => {
+    chunk = chunk.trim();
+    if (!chunk) return '';
+    if (/^<(h[1-6]|ul|ol|table|blockquote|hr)/.test(chunk)) return chunk;
+    return `<p>${chunk.replace(/\n/g,'<br>')}</p>`;
+  }).join('');
+
+  return t;
+}
+
+// ── Chip management ───────────────────────────────────────────────
+function setChip(name, status) {
+  if (!chips[name]) {
+    const el = document.createElement('span');
+    el.className = 'chip chip-waiting';
+    el.id = 'chip-' + name;
+    el.textContent = name.charAt(0).toUpperCase() + name.slice(1);
+    document.getElementById('agent-chips').appendChild(el);
+    chips[name] = el;
+  }
+  chips[name].className = `chip chip-${status}`;
+}
+
+// ── Copy ──────────────────────────────────────────────────────────
+function copyCard(contentId, btnId) {
+  navigator.clipboard.writeText(document.getElementById(contentId).innerText).then(() => {
+    const btn = document.getElementById(btnId);
+    btn.textContent = 'Copied';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+
+// ── Export helpers ────────────────────────────────────────────────
+function downloadMd(agent) {
+  if (!currentJobId) return;
+  const a = document.createElement('a');
+  a.href = `/api/export/${currentJobId}/${agent}.md`;
+  a.click();
+}
+
+function openPrint(agent) {
+  if (!currentJobId) return;
+  window.open(`/api/export/${currentJobId}/${agent}/print`, '_blank');
+}
+
+// ── Specialist card ───────────────────────────────────────────────
+function addSpecialistCard(agent, content) {
+  const area = document.getElementById('specialists-area');
+  const cid  = 'content-' + agent;
+  const bid  = 'copy-' + agent;
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <div class="card-head">
+      <span class="badge badge-${agent}">${agent.charAt(0).toUpperCase() + agent.slice(1)}</span>
+      <div class="card-actions">
+        <button class="action-btn" id="${bid}" onclick="copyCard('${cid}','${bid}')">Copy</button>
+        <button class="action-btn" onclick="downloadMd('${agent}')">⬇ MD</button>
+        <button class="action-btn pdf-btn" onclick="openPrint('${agent}')">⬇ PDF</button>
+      </div>
+    </div>
+    <div class="md" id="${cid}">${md(content)}</div>`;
+  area.appendChild(card);
+  setChip(agent, 'done');
+}
+
+// ── Event handler ─────────────────────────────────────────────────
+function handleEvent(e) {
+  const ev = JSON.parse(e.data);
+  switch (ev.type) {
+    case 'status':
+      document.getElementById('status-text').textContent = ev.message;
+      break;
+    case 'agents_identified':
+      ev.agents.forEach(a => setChip(a, 'running'));
+      break;
+    case 'marcus_analysis':
+      document.getElementById('analysis-content').innerHTML = md(ev.content);
+      document.getElementById('analysis-card').style.display = 'block';
+      break;
+    case 'specialist':
+      addSpecialistCard(ev.agent, ev.content);
+      break;
+    case 'review':
+      document.getElementById('review-content').innerHTML = md(ev.content);
+      document.getElementById('review-card').style.display = 'block';
+      break;
+    case 'done':
+      currentJobId = ev.job_id;
+      document.getElementById('status-bar').classList.remove('visible');
+      document.getElementById('submit-btn').disabled = false;
+      document.getElementById('save-notice-text').textContent =
+        `Auto-saved to outputs/${ev.saved_as} — use ⬇ buttons above to download individual sections.`;
+      document.getElementById('save-notice').classList.add('visible');
+      break;
+    case 'error':
+      document.getElementById('status-text').textContent = 'Error: ' + ev.message;
+      document.getElementById('submit-btn').disabled = false;
+      break;
+  }
+}
+
+// ── Submit ────────────────────────────────────────────────────────
+async function submitBrief() {
+  const brief = document.getElementById('brief').value.trim();
+  if (!brief) return;
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  currentJobId = null;
+
+  // Reset
+  document.getElementById('analysis-card').style.display = 'none';
+  document.getElementById('review-card').style.display   = 'none';
+  document.getElementById('specialists-area').innerHTML  = '';
+  document.getElementById('agent-chips').innerHTML       = '';
+  document.getElementById('save-notice').classList.remove('visible');
+  document.getElementById('analysis-content').innerHTML = '';
+  document.getElementById('review-content').innerHTML   = '';
+  Object.keys(chips).forEach(k => delete chips[k]);
+
+  document.getElementById('status-bar').classList.add('visible');
+  document.getElementById('output-area').classList.add('visible');
+  document.getElementById('status-text').textContent = 'Marcus is reading your brief...';
+
+  try {
+    const resp = await fetch('/api/brief', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brief })
+    });
+    const { job_id, error } = await resp.json();
+    if (error) throw new Error(error);
+
+    const src = new EventSource(`/api/stream/${job_id}`);
+    src.onmessage = (e) => {
+      handleEvent(e);
+      const ev = JSON.parse(e.data);
+      if (ev.type === 'done' || ev.type === 'error') src.close();
+    };
+    src.onerror = () => {
+      document.getElementById('status-text').textContent = 'Connection lost. Please try again.';
+      btn.disabled = false;
+      src.close();
+    };
+  } catch (err) {
+    document.getElementById('status-text').textContent = 'Error: ' + err.message;
+    btn.disabled = false;
+  }
+}
+
+// ── Char count + Enter to submit ─────────────────────────────────
+document.getElementById('brief').addEventListener('input', function () {
+  const n = this.value.length;
+  document.getElementById('char-count').textContent = n ? n + ' chars' : '';
+});
+document.getElementById('brief').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitBrief(); }
+});
+</script>
+
+</body>
+</html>

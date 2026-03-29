@@ -190,14 +190,23 @@ ORIGINAL BRIEF:
 REQUIREMENTS:
 - Single self-contained HTML5 file. Include the Google Fonts CDN <link> tag above in <head>.
 - All CSS inline in a <style> block. Use the exact hex colors above for all brand elements.
+- Add `html {{ scroll-behavior: smooth; }}` to the CSS so anchor links scroll smoothly.
 - Fully responsive — mobile-first, CSS Grid and Flexbox layout.
-- Navigation: logo/brand name, 3–4 nav links, CTA button in primary color.
-- Hero section: bold headline (from copy inputs), subheadline, two CTA buttons, and a PLACEHOLDER for a screen recording:
+- Page sections MUST use these exact id attributes (in this order):
+    <nav> or <header> — id="top"
+    Hero section       — id="hero"
+    Value proposition  — id="features"
+    Features section   — id="how-it-works"
+    Social proof       — id="testimonials"
+    CTA section        — id="contact"
+- Navigation links MUST use matching href anchors: href="#hero", href="#features", href="#how-it-works", href="#testimonials", href="#contact"
+- Navigation: logo/brand name links to href="#top", then 4 nav links to the sections above, then a CTA button (href="#contact") in primary color.
+- Hero section (id="hero"): bold headline (from copy inputs), subheadline, two CTA buttons (href="#features" and href="#contact"), and a PLACEHOLDER for a screen recording:
   <div class="demo-placeholder">📹 Insert screen recording here — show the software in action</div>
-- Value proposition: 3-column grid of key benefits with icons (use Unicode/emoji icons, not images).
-- Features section: alternating text + demo placeholder layout. Each placeholder labeled with what to record.
-- Social proof: 2–3 quote cards with placeholder names (e.g. "Property Manager, Singapore").
-- CTA section: strong headline + primary button.
+- Value proposition (id="features"): 3-column grid of key benefits with icons (use Unicode/emoji icons, not images).
+- Features section (id="how-it-works"): alternating text + demo placeholder layout. Each placeholder labeled with what to record.
+- Social proof (id="testimonials"): 2–3 quote cards with placeholder names (e.g. "Property Manager, Singapore").
+- CTA section (id="contact"): strong headline + primary button.
 - Footer: brand name, tagline, 3-column links.
 - Professional B2B aesthetic — clean, structured, confident. No stock photo placeholders. Use demo-placeholder divs styled with a dark dashed border and descriptive label for where real screen recordings go.
 - All demo-placeholder divs styled: background: #f1f5f9; border: 2px dashed #94a3b8; border-radius: 8px; padding: 40px; text-align: center; color: #64748b; font-size: 14px;

@@ -1,21 +1,18 @@
 import asyncio
 import base64
-import hashlib
 import json
 import os
 import re
 import secrets
-import urllib.parse
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import httpx
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
@@ -35,27 +32,10 @@ ANTHROPIC_API_KEY  = os.getenv("ANTHROPIC_API_KEY", "")
 HTTP_USER          = os.getenv("HTTP_USER", "admin")
 HTTP_PASS          = os.getenv("HTTP_PASS", "changeme")
 PORT               = int(os.getenv("PORT", "5050"))
-CANVA_CLIENT_ID    = os.getenv("CANVA_CLIENT_ID", "")
-CANVA_CLIENT_SECRET = os.getenv("CANVA_CLIENT_SECRET", "")
-CANVA_REDIRECT_URI = os.getenv("CANVA_REDIRECT_URI", "http://localhost:5050/auth/canva/callback")
-
-CANVA_AUTH_URL  = "https://www.canva.com/api/oauth/authorize"
-CANVA_TOKEN_URL = "https://api.canva.com/rest/v1/oauth/token"
-CANVA_API_BASE  = "https://api.canva.com/rest/v1"
-CANVA_SCOPES    = "design:content:read design:content:write asset:read"
-
 anthropic_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
-_agent_cache: dict[str, str]        = {}
-_jobs:        dict[str, asyncio.Queue] = {}
-_completed:   dict[str, dict]       = {}
-
-# Canva OAuth state
-_canva: dict = {
-    "access_token":  None,
-    "refresh_token": None,
-    "connected_at":  None,
-    "pkce":          {},   # state -> verifier
-}
+_agent_cache: dict = {}
+_jobs:        dict = {}
+_completed:   dict = {}
 
 VALID_AGENTS = {"callum", "priya", "dante", "suki", "felix", "nadia", "zara", "reeva"}
 
@@ -66,7 +46,7 @@ THIRD_PARTY_MESSAGES = {
     ),
     "social_images": (
         "Suki's design brief is saved. Static images require real screen recordings or photography. "
-        "Connect Canva via Settings to auto-create the design skeleton."
+        "Use the Canva JSON template in your outputs folder to build designs in Canva."
     ),
     "publishing": (
         "Content is approved. Connect Buffer, Hootsuite, or a platform API to enable auto-scheduling."
@@ -78,7 +58,7 @@ THIRD_PARTY_MESSAGES = {
 class BasicAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path == "/health" or path.startswith("/api/stream/") or path.startswith("/auth/canva"):
+        if path == "/health" or path.startswith("/api/stream/"):
             return await call_next(request)
         auth = request.headers.get("Authorization", "")
         if not auth.startswith("Basic "):
@@ -299,69 +279,103 @@ Output clean final markdown. No meta-commentary."""
                             model="claude-opus-4-6", max_tokens=4096)
 
 ASSEMBLERS = {
-    "html_website":  (".html", "website"),
-    "html_onepager": (".html", "one-pager"),
-    "html_deck":     (".html", "deck"),
-    "social_pack":   (".md",   "social-pack"),
+    "html_website":  (".html",  "website"),
+    "html_onepager": (".html",  "one-pager"),
+    "social_pack":   (".md",    "social-pack"),
+    "canva_json":    (".json",  "canva"),
 }
 
-# ── Canva OAuth (PKCE) ────────────────────────────────────────────
+# ── Canva JSON template ───────────────────────────────────────────
 
-def _pkce_pair() -> tuple[str, str]:
-    verifier   = secrets.token_urlsafe(64)
-    challenge  = base64.urlsafe_b64encode(
-        hashlib.sha256(verifier.encode()).digest()
-    ).rstrip(b"=").decode()
-    return verifier, challenge
+def _build_canva_json_prompt(outputs: dict, brief: str) -> str:
+    bd = extract_brand_data(outputs)
+    inputs = "\n\n".join(f"## {k.upper()}\n\n{v}" for k, v in outputs.items() if v)
+    palette_json = json.dumps(bd["hex_colors"])
+    hfont = bd["fonts"][0]
+    bfont = bd["fonts"][-1] if len(bd["fonts"]) > 1 else bd["fonts"][0]
+    return f"""Extract all approved brand and copy data into a structured JSON template for Canva.
 
-def canva_connected() -> bool:
-    return bool(_canva.get("access_token"))
+BRAND COLORS:
+Primary: {bd['primary']}
+Secondary: {bd['secondary']}
+Accent: {bd['accent']}
+Full palette: {', '.join(bd['hex_colors'])}
 
-async def canva_create_design(title: str, design_type: str = "Presentation") -> Optional[dict]:
-    """Create a blank design in Canva and return the edit URL."""
-    token = _canva.get("access_token")
-    if not token:
-        return None
-    async with httpx.AsyncClient() as h:
+FONTS: {', '.join(bd['fonts'])}
+
+APPROVED MARKETING OUTPUTS:
+{inputs}
+
+ORIGINAL BRIEF: {brief}
+
+Generate a JSON object with this exact structure — fill ALL fields with real extracted content:
+
+{{
+  "brand": {{
+    "name": "extracted brand name",
+    "tagline": "extracted tagline",
+    "description": "one paragraph brand description",
+    "url": "website URL if mentioned, else empty string",
+    "colors": {{
+      "primary": "{bd['primary']}",
+      "secondary": "{bd['secondary']}",
+      "accent": "{bd['accent']}",
+      "palette": {palette_json}
+    }},
+    "typography": {{
+      "heading_font": "{hfont}",
+      "body_font": "{bfont}"
+    }}
+  }},
+  "copy": {{
+    "headline": "main headline from approved copy",
+    "subheadline": "subheadline",
+    "value_proposition": "one sentence value prop",
+    "cta_primary": "primary CTA button text",
+    "cta_secondary": "secondary CTA text",
+    "features": [
+      {{"title": "feature 1 name", "description": "brief description"}},
+      {{"title": "feature 2 name", "description": "brief description"}},
+      {{"title": "feature 3 name", "description": "brief description"}}
+    ],
+    "testimonials": [
+      {{"quote": "testimonial text", "author": "Name, Title, Company"}},
+      {{"quote": "second testimonial", "author": "Name, Title, Company"}}
+    ],
+    "social_posts": [
+      {{"platform": "linkedin", "caption": "copy-paste ready 150-word post"}},
+      {{"platform": "instagram", "caption": "short caption with 10-15 hashtags"}},
+      {{"platform": "facebook", "caption": "post copy"}}
+    ]
+  }},
+  "canva_bulk_create": {{
+    "note": "Import these rows into Canva Bulk Create. Map field names to named elements in your template.",
+    "rows": [
+      {{"slide": "Hero", "Headline": "main headline", "Subheadline": "subheadline", "Body": "supporting line", "CTA": "button text", "Color1": "{bd['primary']}", "Color2": "{bd['secondary']}", "Font": "{hfont}"}},
+      {{"slide": "Value Prop", "Headline": "section header", "Body": "value proposition paragraph", "Color1": "{bd['primary']}", "Color2": "{bd['secondary']}", "Font": "{hfont}"}},
+      {{"slide": "Feature 1", "Headline": "feature 1 title", "Body": "feature 1 description", "Color1": "{bd['primary']}", "Color2": "{bd['secondary']}", "Font": "{hfont}"}},
+      {{"slide": "Feature 2", "Headline": "feature 2 title", "Body": "feature 2 description", "Color1": "{bd['primary']}", "Color2": "{bd['secondary']}", "Font": "{hfont}"}},
+      {{"slide": "Feature 3", "Headline": "feature 3 title", "Body": "feature 3 description", "Color1": "{bd['primary']}", "Color2": "{bd['secondary']}", "Font": "{hfont}"}},
+      {{"slide": "Testimonial", "Headline": "quote text", "Body": "author attribution", "Color1": "{bd['primary']}", "Color2": "{bd['secondary']}", "Font": "{hfont}"}},
+      {{"slide": "CTA", "Headline": "closing headline", "Body": "supporting close", "CTA": "final button text", "Color1": "{bd['primary']}", "Color2": "{bd['secondary']}", "Font": "{hfont}"}}
+    ]
+  }}
+}}
+
+Output ONLY valid JSON. Start with {{ and end with }}. No markdown, no explanation."""
+
+async def assemble_canva_json(outputs: dict, brief: str) -> str:
+    prompt = _build_canva_json_prompt(outputs, brief)
+    raw = await call_agent(
+        "You extract brand and copy data into structured JSON for Canva. Output only valid JSON.",
+        prompt, model="claude-sonnet-4-6", max_tokens=4096)
+    m = re.search(r"\{[\s\S]*\}", raw)
+    if m:
         try:
-            r = await h.post(
-                f"{CANVA_API_BASE}/designs",
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json={"design_type": {"type": "preset", "name": design_type}, "title": title},
-                timeout=15,
-            )
-            if r.status_code == 401:
-                _canva["access_token"] = None
-                return None
-            r.raise_for_status()
-            data = r.json()
-            return {
-                "design_id": data["design"]["id"],
-                "edit_url":  data["design"]["urls"]["edit_url"],
-                "view_url":  data["design"]["urls"].get("view_url", ""),
-            }
-        except Exception:
-            return None
-
-async def canva_refresh_token() -> bool:
-    refresh = _canva.get("refresh_token")
-    if not refresh or not CANVA_CLIENT_ID:
-        return False
-    async with httpx.AsyncClient() as h:
-        try:
-            r = await h.post(CANVA_TOKEN_URL, data={
-                "grant_type":    "refresh_token",
-                "refresh_token": refresh,
-                "client_id":     CANVA_CLIENT_ID,
-                "client_secret": CANVA_CLIENT_SECRET,
-            }, timeout=15)
-            r.raise_for_status()
-            data = r.json()
-            _canva["access_token"]  = data["access_token"]
-            _canva["refresh_token"] = data.get("refresh_token", refresh)
-            return True
-        except Exception:
-            return False
+            return json.dumps(json.loads(m.group(0)), indent=2, ensure_ascii=False)
+        except json.JSONDecodeError:
+            pass
+    return raw
 
 # ── GitHub + Anthropic ────────────────────────────────────────────
 
@@ -449,9 +463,6 @@ _PAGE_STYLE = """
   .nav-links { display: flex; gap: 6px; align-items: center; }
   .nav-link { color: #94a3b8; font-size: 13px; text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: all 0.15s; }
   .nav-link:hover, .nav-link.active { background: rgba(255,255,255,0.1); color: white; }
-  .nav-canva { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 6px; text-decoration: none; transition: all 0.15s; }
-  .nav-canva.connected { background: #dcfce7; color: #16a34a; }
-  .nav-canva.disconnected { background: rgba(255,255,255,0.08); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1); }
   .container { max-width: 900px; margin: 0 auto; padding: 32px 24px 80px; }
 """
 
@@ -470,21 +481,16 @@ _PRINT_STYLE = """
   @media print { .toolbar{display:none!important;} body{margin:20px;} }
 """
 
-def _nav(active: str, canva_ok: bool = False) -> str:
+def _nav(active: str) -> str:
     def lnk(href, label, key):
         cls = "nav-link active" if key == active else "nav-link"
         return f'<a href="{href}" class="{cls}">{label}</a>'
-    canva_html = (
-        f'<a href="/auth/canva" class="nav-canva {"connected" if canva_ok else "disconnected"}">'
-        f'{"✓ Canva" if canva_ok else "Connect Canva"}</a>'
-    )
     return f"""<nav>
       <a href="/" class="nav-brand">Studio N<span>by Marcus</span></a>
       <div class="nav-links">
         {lnk('/','Brief','brief')}
         {lnk('/studio','Studio','studio')}
         {lnk('/outputs','Outputs','outputs')}
-        {canva_html}
       </div>
     </nav>"""
 
@@ -625,52 +631,54 @@ async def process_job(job_id: str, brief: str) -> None:
             job["marcus_cascade_review"] = r2
             await emit({"type": "cascade_review", "content": r2})
 
-        # Assembly
-        assembly_type = cascade_plan.get("assembly", "none")
-        all_outputs   = {**stage1_outputs, **cascade_outputs}
+        # Assembly — always generate all 3 files in parallel when there are outputs
+        all_outputs = {**stage1_outputs, **cascade_outputs}
 
-        if assembly_type in ASSEMBLERS:
-            await emit({"type": "assembly_start", "assembly_type": assembly_type})
-            await emit({"type": "status",
-                        "message": f"Assembling {assembly_type.replace('_', ' ')}..."})
+        if all_outputs:
+            await emit({"type": "assembly_start", "assembly_type": "bundle"})
+            await emit({"type": "status", "message": "Assembling 3 output files in parallel..."})
 
-            if assembly_type == "html_website":
-                content = await assemble_html(
+            website_content, onepager_content, canva_json_str = await asyncio.gather(
+                assemble_html(
                     _build_website_prompt(all_outputs, brief),
-                    "You generate complete, production-ready B2B HTML websites with Google Fonts. Output only valid HTML.")
-            elif assembly_type == "html_onepager":
-                content = await assemble_html(
+                    "You generate complete, production-ready B2B HTML websites with Google Fonts. Output only valid HTML."),
+                assemble_html(
                     _build_onepager_prompt(all_outputs, brief),
-                    "You generate complete, print-ready HTML one-pagers with Google Fonts. Output only valid HTML.")
-            elif assembly_type == "html_deck":
-                content = await assemble_html(
-                    _build_deck_prompt(all_outputs, brief),
-                    "You generate complete HTML presentation decks with Google Fonts and keyboard navigation. Output only valid HTML.")
-            else:
-                content = await assemble_social_pack(all_outputs, brief)
+                    "You generate complete, print-ready A4 HTML one-pagers with Google Fonts. Output only valid HTML."),
+                assemble_canva_json(all_outputs, brief),
+            )
 
-            assembled_path = save_assembled(job, assembly_type, content)
-            job[f"assembled_{assembly_type}"] = content
+            website_path  = save_assembled(job, "html_website",  website_content)
+            onepager_path = save_assembled(job, "html_onepager", onepager_content)
+            canva_path    = save_assembled(job, "canva_json",    canva_json_str)
 
-            canva_url = None
-            if assembly_type in ("html_website", "html_onepager", "html_deck") and canva_connected():
-                await emit({"type": "status", "message": "Creating Canva design..."})
-                label_map = {"html_website": "Presentation", "html_onepager": "A4 Document",
-                             "html_deck": "Presentation"}
-                bd = extract_brand_data(all_outputs)
-                title = f"{bd['brand_name'] or brief[:40]} — {assembly_type.replace('html_','').replace('_',' ').title()}"
-                result = await canva_create_design(title, label_map.get(assembly_type, "Presentation"))
-                if result:
-                    canva_url = result["edit_url"]
-                    job["canva_url"] = canva_url
+            bundle = {
+                "html_website":  website_path.name,
+                "html_onepager": onepager_path.name,
+                "canva_json":    canva_path.name,
+            }
 
             await emit({
-                "type":          "assembly_done",
-                "assembly_type": assembly_type,
-                "label":         ASSEMBLERS[assembly_type][1],
-                "filename":      assembled_path.name,
-                "canva_url":     canva_url,
+                "type":  "assembly_bundle_done",
+                "files": bundle,
+                "labels": {
+                    "html_website":  "HTML Website",
+                    "html_onepager": "A4 One-Pager (PDF-ready)",
+                    "canva_json":    "Canva Template (JSON)",
+                },
             })
+
+            # Optional social pack
+            if cascade_plan.get("assembly") == "social_pack":
+                await emit({"type": "status", "message": "Compiling social content pack..."})
+                social_content = await assemble_social_pack(all_outputs, brief)
+                social_path = save_assembled(job, "social_pack", social_content)
+                await emit({
+                    "type":          "assembly_done",
+                    "assembly_type": "social_pack",
+                    "label":         "Social Content Pack",
+                    "filename":      social_path.name,
+                })
 
         md_path = save_markdown(job)
         _completed[job_id] = job
@@ -687,10 +695,7 @@ async def process_job(job_id: str, brief: str) -> None:
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "canva_connected": canva_connected(),
-    })
+    return templates.TemplateResponse("index.html", {"request": request})
 
 @app.post("/api/brief")
 async def start_brief(request: Request):
@@ -717,70 +722,6 @@ async def stream_job(job_id: str):
     return StreamingResponse(generate(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
-@app.get("/api/canva/status")
-async def canva_status():
-    return {"connected": canva_connected(), "connected_at": _canva.get("connected_at")}
-
-# ── Canva OAuth ───────────────────────────────────────────────────
-
-@app.get("/auth/canva")
-async def canva_auth_start():
-    if not CANVA_CLIENT_ID:
-        return HTMLResponse(
-            "<h2>Canva not configured</h2>"
-            "<p>Add <code>CANVA_CLIENT_ID</code> and <code>CANVA_CLIENT_SECRET</code> to your .env file.</p>"
-            "<p>Get credentials at <a href='https://www.canva.com/developers' target='_blank'>canva.com/developers</a>.</p>",
-            status_code=400)
-    state             = secrets.token_urlsafe(16)
-    verifier, challenge = _pkce_pair()
-    _canva["pkce"][state] = verifier
-    params = urllib.parse.urlencode({
-        "response_type":         "code",
-        "client_id":             CANVA_CLIENT_ID,
-        "redirect_uri":          CANVA_REDIRECT_URI,
-        "scope":                 CANVA_SCOPES,
-        "state":                 state,
-        "code_challenge":        challenge,
-        "code_challenge_method": "S256",
-    })
-    return RedirectResponse(f"{CANVA_AUTH_URL}?{params}")
-
-@app.get("/auth/canva/callback")
-async def canva_auth_callback(code: str = "", state: str = "", error: str = ""):
-    if error:
-        return HTMLResponse(
-            f"<h2>Canva auth failed: {error}</h2><p><a href='/'>Back to Studio N</a></p>",
-            status_code=400)
-    verifier = _canva["pkce"].pop(state, None)
-    if not verifier:
-        return HTMLResponse("<h2>Invalid state</h2><p><a href='/'>Back</a></p>", status_code=400)
-    async with httpx.AsyncClient() as h:
-        try:
-            r = await h.post(CANVA_TOKEN_URL, data={
-                "grant_type":    "authorization_code",
-                "code":          code,
-                "redirect_uri":  CANVA_REDIRECT_URI,
-                "client_id":     CANVA_CLIENT_ID,
-                "client_secret": CANVA_CLIENT_SECRET,
-                "code_verifier": verifier,
-            }, timeout=15)
-            r.raise_for_status()
-            data = r.json()
-            _canva["access_token"]  = data["access_token"]
-            _canva["refresh_token"] = data.get("refresh_token")
-            _canva["connected_at"]  = datetime.now().strftime("%Y-%m-%d %H:%M")
-        except Exception as exc:
-            return HTMLResponse(
-                f"<h2>Token exchange failed</h2><pre>{exc}</pre><p><a href='/'>Back</a></p>",
-                status_code=500)
-    return HTMLResponse("""<!DOCTYPE html><html><head><meta charset="UTF-8">
-<style>body{font-family:-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;
-min-height:100vh;background:#f8fafc;}</style></head><body>
-<div style="text-align:center;"><div style="font-size:48px;margin-bottom:16px;">✓</div>
-<h2 style="color:#1e293b;margin-bottom:8px;">Canva connected</h2>
-<p style="color:#64748b;margin-bottom:24px;">Studio N can now create Canva designs automatically.</p>
-<a href="/" style="background:#1e293b;color:white;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:600;">
-Back to Studio N</a></div></body></html>""")
 
 # ── Export routes ─────────────────────────────────────────────────
 
@@ -833,7 +774,6 @@ async def print_export(job_id: str, agent: str):
 async def studio_page():
     html_files = sorted(OUTPUTS_DIR.glob("*.html"),
                         key=lambda f: f.stat().st_mtime, reverse=True)
-    canva_ok = canva_connected()
 
     if not html_files:
         cards_html = """<div style="text-align:center;padding:80px 0;color:#94a3b8;">
@@ -875,18 +815,6 @@ async def studio_page():
             </div>"""
         cards_html += "</div>"
 
-    canva_banner = "" if canva_ok else """
-    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px 18px;
-                margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
-      <span style="font-size:13px;color:#92400e;">
-        <strong>Canva not connected.</strong> Connect to automatically create Canva designs when HTML files are assembled.
-      </span>
-      <a href="/auth/canva" style="background:#1e293b;color:white;padding:7px 16px;border-radius:7px;
-                                   font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;">
-        Connect Canva →
-      </a>
-    </div>"""
-
     count = len(html_files)
     return HTMLResponse(f"""<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
@@ -921,9 +849,8 @@ async def studio_page():
   .ca-dl {{border-color:#bfdbfe;color:#2563eb;}}
   .ca-dl:hover {{background:#eff6ff;}}
 </style></head><body>
-{_nav('studio', canva_ok)}
+{_nav('studio')}
 <div class="container">
-  {canva_banner}
   <div class="page-head">
     <span class="page-title">Studio</span>
     <span class="page-count">{count} HTML file{'s' if count!=1 else ''}</span>
@@ -935,16 +862,23 @@ async def studio_page():
 
 def _parse_output_file(path: Path) -> dict:
     info = {"filename": path.name, "size_kb": round(path.stat().st_size/1024,1),
-            "brief": path.stem, "date": "", "is_html": path.suffix == ".html", "label": ""}
-    for l in ["website","one-pager","deck","social-pack"]:
+            "brief": path.stem, "date": "", "is_html": path.suffix == ".html",
+            "is_json": path.suffix == ".json", "label": ""}
+    for l in ["website", "one-pager", "social-pack", "canva"]:
         if l in path.name: info["label"] = l; break
     try:
         text = path.read_text(encoding="utf-8")
         if path.suffix == ".md":
             if m := re.search(r"\*\*Brief:\*\* (.+)", text): info["brief"] = m.group(1).strip()
             if d := re.search(r"\*\*Date:\*\* (.+)",  text): info["date"]  = d.group(1).strip()
-        else:
+        elif path.suffix == ".html":
             if t := re.search(r"<title>(.+?)</title>", text): info["brief"] = t.group(1).strip()
+        elif path.suffix == ".json":
+            try:
+                data = json.loads(text)
+                info["brief"] = data.get("brand", {}).get("name", path.stem)
+            except Exception:
+                pass
     except Exception:
         pass
     return info
@@ -953,15 +887,25 @@ def _parse_output_file(path: Path) -> dict:
 async def outputs_page():
     files = [_parse_output_file(f) for f in
              sorted(OUTPUTS_DIR.glob("*"), key=lambda f: f.stat().st_mtime, reverse=True)
-             if f.suffix in (".md",".html")]
+             if f.suffix in (".md", ".html", ".json")]
     rows = ""
     for f in files:
+        label_styles = {
+            "website":    "#dbeafe:#1d4ed8",
+            "one-pager":  "#d1fae5:#065f46",
+            "canva":      "#ede9fe:#6d28d9",
+            "social-pack":"#fef3c7:#92400e",
+        }
+        lbg, lfg = label_styles.get(f["label"], "#f1f5f9:#475569").split(":") if f["label"] else ("#f1f5f9", "#475569")
         lb = (f'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;'
-              f'background:#dbeafe;color:#1d4ed8;margin-left:8px;">{f["label"].upper()}</span>'
+              f'background:{lbg};color:{lfg};margin-left:8px;">{f["label"].upper()}</span>'
               if f["label"] else "")
-        view = (f'<a class="out-btn out-btn-view" href="/outputs/view/{f["filename"]}" target="_blank">View</a>'
-                if f["is_html"] else
-                f'<a class="out-btn out-btn-pdf" href="/outputs/view/{f["filename"]}" target="_blank">⬇ PDF</a>')
+        if f["is_html"]:
+            view = f'<a class="out-btn out-btn-view" href="/outputs/view/{f["filename"]}" target="_blank">View</a>'
+        elif f["is_json"]:
+            view = f'<a class="out-btn out-btn-json" href="/outputs/download/{f["filename"]}">⬇ JSON</a>'
+        else:
+            view = f'<a class="out-btn out-btn-pdf" href="/outputs/view/{f["filename"]}" target="_blank">View</a>'
         ext = f["filename"].rsplit(".",1)[-1].upper()
         rows += f"""<div class="output-row">
           <div class="output-meta">
@@ -1000,8 +944,9 @@ async def outputs_page():
   .out-btn:hover {{background:#f8fafc;color:#1e293b;}}
   .out-btn-pdf {{border-color:#bfdbfe;color:#2563eb;}} .out-btn-pdf:hover {{background:#eff6ff;}}
   .out-btn-view {{border-color:#bbf7d0;color:#16a34a;font-weight:700;}} .out-btn-view:hover {{background:#f0fdf4;}}
+  .out-btn-json {{border-color:#e9d5ff;color:#7c3aed;font-weight:700;}} .out-btn-json:hover {{background:#faf5ff;}}
 </style></head><body>
-{_nav('outputs', canva_connected())}
+{_nav('outputs')}
 <div class="container">
   <div class="page-head">
     <span class="page-title">Outputs</span>
@@ -1014,9 +959,10 @@ async def outputs_page():
 async def download_output(filename: str):
     safe = Path(filename).name
     path = OUTPUTS_DIR / safe
-    if not path.exists() or path.suffix not in (".md",".html"):
+    if not path.exists() or path.suffix not in (".md", ".html", ".json"):
         return JSONResponse({"error": "File not found"}, status_code=404)
-    mime = "text/html" if path.suffix == ".html" else "text/markdown"
+    mime = {"html": "text/html", "md": "text/markdown", "json": "application/json"}.get(
+        path.suffix.lstrip("."), "application/octet-stream")
     return StreamingResponse(iter([path.read_bytes()]), media_type=mime,
                              headers={"Content-Disposition": f'attachment; filename="{safe}"'})
 
@@ -1024,7 +970,7 @@ async def download_output(filename: str):
 async def view_output(filename: str):
     safe = Path(filename).name
     path = OUTPUTS_DIR / safe
-    if not path.exists() or path.suffix not in (".md",".html"):
+    if not path.exists() or path.suffix not in (".md", ".html", ".json"):
         return HTMLResponse("<h1>File not found</h1>", status_code=404)
     content = path.read_text(encoding="utf-8")
     if path.suffix == ".html":
@@ -1039,4 +985,4 @@ async def view_output(filename: str):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "canva": canva_connected()}
+    return {"status": "ok"}

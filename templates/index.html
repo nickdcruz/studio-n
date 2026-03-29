@@ -18,9 +18,6 @@
     .ct-ch  { background: #fef9c3; color: #a16207; }
     .nav-link { color: #94a3b8; font-size: 13px; text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: all 0.15s; }
     .nav-link:hover { background: rgba(255,255,255,0.1); color: white; }
-    .canva-badge { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; text-decoration: none; transition: all 0.15s; }
-    .canva-connected    { background: #dcfce7; color: #166534; }
-    .canva-disconnected { background: rgba(255,255,255,0.1); color: #94a3b8; border: 1px solid rgba(255,255,255,0.15); }
 
     .container { max-width: 860px; margin: 0 auto; padding: 32px 24px 80px; }
 
@@ -85,23 +82,21 @@
     .flag-title { font-size: 13px; font-weight: 700; color: #92400e; margin-bottom: 4px; }
     .flag-msg { font-size: 13px; color: #78350f; line-height: 1.5; }
 
-    /* Canva card */
-    .canva-card { background: #faf5ff; border: 1px solid #d8b4fe; border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; display: flex; align-items: center; gap: 16px; }
-    .canva-card-icon { font-size: 22px; flex-shrink: 0; }
-    .canva-card-body { flex: 1; }
-    .canva-card-title { font-size: 13px; font-weight: 700; color: #6d28d9; margin-bottom: 4px; }
-    .canva-card-sub { font-size: 12px; color: #7c3aed; }
-    .canva-open-btn { background: #7c3aed; color: white; border: none; padding: 8px 16px; border-radius: 7px; font-size: 12px; font-weight: 700; cursor: pointer; text-decoration: none; white-space: nowrap; transition: background 0.15s; }
-    .canva-open-btn:hover { background: #6d28d9; }
-
-    /* Assembly card */
+    /* Assembly bundle card */
     .assembly-card { background: white; border: 2px solid #1e293b; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     .assembly-card .card-head { border-bottom-color: #e2e8f0; }
     .assembly-badge { background: #1e293b; color: white; font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 6px; letter-spacing: 0.3px; }
-    .assembly-preview { background: #f8fafc; border-radius: 8px; padding: 12px 16px; margin-top: 14px; font-size: 13px; color: #475569; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .assembly-filename { font-family: monospace; font-size: 12px; color: #1e293b; }
-    .view-btn { background: #1e293b; color: white; border: none; padding: 8px 16px; border-radius: 7px; font-size: 12px; font-weight: 700; cursor: pointer; text-decoration: none; white-space: nowrap; transition: background 0.15s; }
+    .bundle-files { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+    .bundle-file { background: #f8fafc; border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .bundle-label { font-size: 13px; font-weight: 600; color: #1e293b; }
+    .bundle-filename { font-family: monospace; font-size: 11px; color: #64748b; margin-top: 2px; }
+    .bundle-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .view-btn { background: #1e293b; color: white; border: none; padding: 7px 14px; border-radius: 7px; font-size: 12px; font-weight: 700; cursor: pointer; text-decoration: none; white-space: nowrap; transition: background 0.15s; }
     .view-btn:hover { background: #334155; }
+    .dl-btn { background: none; border: 1px solid #e2e8f0; color: #475569; padding: 7px 14px; border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: none; white-space: nowrap; transition: all 0.15s; }
+    .dl-btn:hover { background: #f8fafc; color: #1e293b; }
+    .dl-btn.json { border-color: #e9d5ff; color: #7c3aed; }
+    .dl-btn.json:hover { background: #faf5ff; }
 
     /* Action buttons */
     .card-actions { display: flex; gap: 6px; align-items: center; }
@@ -139,7 +134,6 @@
     </div>
     <a href="/studio" class="nav-link">Studio</a>
     <a href="/outputs" class="nav-link">Outputs</a>
-    <span id="canva-nav-badge"></span>
   </div>
 </nav>
 
@@ -213,36 +207,20 @@
       <div class="md" id="cascade-review-content"></div>
     </div>
 
-    <!-- Assembly -->
+    <!-- Assembly bundle -->
     <div id="assembly-divider" style="display:none;" class="stage-divider"><span>Final Assembly</span></div>
-    <div id="canva-card" class="canva-card" style="display:none;">
-      <div class="canva-card-icon">🎨</div>
-      <div class="canva-card-body">
-        <div class="canva-card-title">Canva Design Created</div>
-        <div class="canva-card-sub" id="canva-card-sub">Opening in Canva…</div>
-      </div>
-      <a class="canva-open-btn" id="canva-edit-btn" href="#" target="_blank">Open in Canva →</a>
-    </div>
     <div id="assembly-card" class="assembly-card" style="display:none;">
       <div class="card-head">
-        <span class="assembly-badge" id="assembly-badge">Assembled Output</span>
-        <div class="card-actions">
-          <button class="action-btn" id="dl-assembly-md" onclick="downloadAssembly()">⬇ Download</button>
-        </div>
+        <span class="assembly-badge">3 Files Ready</span>
       </div>
-      <div style="font-size:13px;color:#475569;margin-bottom:12px;" id="assembly-desc"></div>
-      <div class="assembly-preview">
-        <span class="assembly-filename" id="assembly-filename"></span>
-        <a class="view-btn" id="assembly-view-btn" href="#" target="_blank">Open →</a>
-      </div>
+      <div id="bundle-files" class="bundle-files"></div>
     </div>
 
   </div>
 </div>
 
 <script>
-let currentJobId  = null;
-let assemblyFile  = null;
+let currentJobId = null;
 const chips = {};
 
 // ── Markdown renderer ─────────────────────────────────────────────
@@ -299,7 +277,6 @@ function copyCard(cid, bid) {
 // ── Exports ───────────────────────────────────────────────────────
 function downloadMd(agent) { if (currentJobId) window.location = `/api/export/${currentJobId}/${agent}.md`; }
 function openPrint(agent)  { if (currentJobId) window.open(`/api/export/${currentJobId}/${agent}/print`, '_blank'); }
-function downloadAssembly(){ if (assemblyFile) window.location = `/outputs/download/${assemblyFile}`; }
 
 // ── Specialist card (stage 1 or cascade) ─────────────────────────
 function addAgentCard(agent, content, containerId) {
@@ -388,34 +365,55 @@ function handleEvent(e) {
 
     case 'assembly_start':
       document.getElementById('assembly-divider').style.display = 'flex';
-      document.getElementById('status-text').textContent = `Assembling ${ev.assembly_type.replace(/_/g,' ')}...`;
+      document.getElementById('status-text').textContent = 'Assembling 3 output files in parallel...';
       break;
 
-    case 'assembly_done': {
-      assemblyFile = ev.filename;
-      const labels = {
-        html_website:  'Complete HTML Website',
-        html_onepager: 'HTML One-Pager',
-        html_deck:     'HTML Presentation Deck',
-        social_pack:   'Social Media Content Pack',
-      };
-      const isHtml = ev.filename.endsWith('.html');
-      document.getElementById('assembly-badge').textContent = labels[ev.assembly_type] || 'Assembled Output';
-      document.getElementById('assembly-desc').textContent  =
-        isHtml
-          ? 'Your assembled file is ready. Click Open to view it in your browser, or Download to save.'
-          : 'Your content pack is ready. Click Download to save the markdown file.';
-      document.getElementById('assembly-filename').textContent = ev.filename;
-      document.getElementById('assembly-view-btn').href = `/outputs/view/${ev.filename}`;
-      if (!isHtml) document.getElementById('assembly-view-btn').textContent = 'View →';
+    case 'assembly_bundle_done': {
+      const container = document.getElementById('bundle-files');
+      container.innerHTML = '';
+      const fileOrder = ['html_website', 'html_onepager', 'canva_json'];
+      for (const key of fileOrder) {
+        const fname = ev.files[key];
+        const label = ev.labels[key];
+        if (!fname) continue;
+        const isHtml = fname.endsWith('.html');
+        const isJson = fname.endsWith('.json');
+        const viewBtn = isHtml
+          ? `<a class="view-btn" href="/outputs/view/${fname}" target="_blank">Open →</a>`
+          : '';
+        const dlClass = isJson ? 'dl-btn json' : 'dl-btn';
+        const dlLabel = isJson ? '⬇ JSON' : '⬇ HTML';
+        const row = document.createElement('div');
+        row.className = 'bundle-file';
+        row.innerHTML = `
+          <div>
+            <div class="bundle-label">${label}</div>
+            <div class="bundle-filename">${fname}</div>
+          </div>
+          <div class="bundle-actions">
+            ${viewBtn}
+            <a class="${dlClass}" href="/outputs/download/${fname}">⬇ ${isHtml ? 'HTML' : isJson ? 'JSON' : 'MD'}</a>
+          </div>`;
+        container.appendChild(row);
+      }
       document.getElementById('assembly-card').style.display = 'block';
       break;
     }
 
-    case 'canva_design': {
-      document.getElementById('canva-card-sub').textContent = ev.title || 'Design ready';
-      document.getElementById('canva-edit-btn').href = ev.edit_url;
-      document.getElementById('canva-card').style.display = 'flex';
+    case 'assembly_done': {
+      // social pack fallback
+      const row = document.createElement('div');
+      row.className = 'bundle-file';
+      row.innerHTML = `
+        <div>
+          <div class="bundle-label">${ev.label || 'Output'}</div>
+          <div class="bundle-filename">${ev.filename}</div>
+        </div>
+        <div class="bundle-actions">
+          <a class="dl-btn" href="/outputs/download/${ev.filename}">⬇ MD</a>
+        </div>`;
+      document.getElementById('bundle-files').appendChild(row);
+      document.getElementById('assembly-card').style.display = 'block';
       break;
     }
 
@@ -442,7 +440,7 @@ async function submitBrief() {
 
   const btn = document.getElementById('submit-btn');
   btn.disabled = true;
-  currentJobId = null; assemblyFile = null;
+  currentJobId = null;
 
   ['analysis-card','review-card','cascade-review-card','assembly-card'].forEach(id => {
     document.getElementById(id).style.display = 'none';
@@ -496,19 +494,6 @@ document.getElementById('brief').addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitBrief(); }
 });
 
-// ── Canva nav badge ───────────────────────────────────────────────
-(async function loadCanvaStatus() {
-  try {
-    const r = await fetch('/api/canva/status');
-    const d = await r.json();
-    const el = document.getElementById('canva-nav-badge');
-    if (d.connected) {
-      el.innerHTML = '<span class="canva-badge canva-connected">✓ Canva</span>';
-    } else {
-      el.innerHTML = '<a href="/auth/canva" class="canva-badge canva-disconnected">Connect Canva</a>';
-    }
-  } catch(e) {}
-})();
 </script>
 </body>
 </html>

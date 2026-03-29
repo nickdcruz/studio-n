@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Marcus — Marketing Command</title>
+  <title>Studio N</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1e293b; min-height: 100vh; }
@@ -18,6 +18,9 @@
     .ct-ch  { background: #fef9c3; color: #a16207; }
     .nav-link { color: #94a3b8; font-size: 13px; text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: all 0.15s; }
     .nav-link:hover { background: rgba(255,255,255,0.1); color: white; }
+    .canva-badge { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; text-decoration: none; transition: all 0.15s; }
+    .canva-connected    { background: #dcfce7; color: #166534; }
+    .canva-disconnected { background: rgba(255,255,255,0.1); color: #94a3b8; border: 1px solid rgba(255,255,255,0.15); }
 
     .container { max-width: 860px; margin: 0 auto; padding: 32px 24px 80px; }
 
@@ -82,6 +85,15 @@
     .flag-title { font-size: 13px; font-weight: 700; color: #92400e; margin-bottom: 4px; }
     .flag-msg { font-size: 13px; color: #78350f; line-height: 1.5; }
 
+    /* Canva card */
+    .canva-card { background: #faf5ff; border: 1px solid #d8b4fe; border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; display: flex; align-items: center; gap: 16px; }
+    .canva-card-icon { font-size: 22px; flex-shrink: 0; }
+    .canva-card-body { flex: 1; }
+    .canva-card-title { font-size: 13px; font-weight: 700; color: #6d28d9; margin-bottom: 4px; }
+    .canva-card-sub { font-size: 12px; color: #7c3aed; }
+    .canva-open-btn { background: #7c3aed; color: white; border: none; padding: 8px 16px; border-radius: 7px; font-size: 12px; font-weight: 700; cursor: pointer; text-decoration: none; white-space: nowrap; transition: background 0.15s; }
+    .canva-open-btn:hover { background: #6d28d9; }
+
     /* Assembly card */
     .assembly-card { background: white; border: 2px solid #1e293b; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     .assembly-card .card-head { border-bottom-color: #e2e8f0; }
@@ -118,14 +130,16 @@
 <body>
 
 <nav>
-  <a href="/" class="nav-brand">Marcus</a>
+  <a href="/" class="nav-brand">Studio N <span style="font-weight:400;opacity:0.5;font-size:12px;">by Marcus</span></a>
   <div class="nav-right">
     <div class="client-tags">
       <span class="ctag ct-ai">AI Living</span>
       <span class="ctag ct-wb">WiBiz</span>
       <span class="ctag ct-ch">Charter</span>
     </div>
+    <a href="/studio" class="nav-link">Studio</a>
     <a href="/outputs" class="nav-link">Outputs</a>
+    <span id="canva-nav-badge"></span>
   </div>
 </nav>
 
@@ -201,6 +215,14 @@
 
     <!-- Assembly -->
     <div id="assembly-divider" style="display:none;" class="stage-divider"><span>Final Assembly</span></div>
+    <div id="canva-card" class="canva-card" style="display:none;">
+      <div class="canva-card-icon">🎨</div>
+      <div class="canva-card-body">
+        <div class="canva-card-title">Canva Design Created</div>
+        <div class="canva-card-sub" id="canva-card-sub">Opening in Canva…</div>
+      </div>
+      <a class="canva-open-btn" id="canva-edit-btn" href="#" target="_blank">Open in Canva →</a>
+    </div>
     <div id="assembly-card" class="assembly-card" style="display:none;">
       <div class="card-head">
         <span class="assembly-badge" id="assembly-badge">Assembled Output</span>
@@ -390,6 +412,13 @@ function handleEvent(e) {
       break;
     }
 
+    case 'canva_design': {
+      document.getElementById('canva-card-sub').textContent = ev.title || 'Design ready';
+      document.getElementById('canva-edit-btn').href = ev.edit_url;
+      document.getElementById('canva-card').style.display = 'flex';
+      break;
+    }
+
     case 'done':
       currentJobId = ev.job_id;
       document.getElementById('status-bar').classList.remove('visible');
@@ -466,6 +495,20 @@ document.getElementById('brief').addEventListener('input', function() {
 document.getElementById('brief').addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitBrief(); }
 });
+
+// ── Canva nav badge ───────────────────────────────────────────────
+(async function loadCanvaStatus() {
+  try {
+    const r = await fetch('/api/canva/status');
+    const d = await r.json();
+    const el = document.getElementById('canva-nav-badge');
+    if (d.connected) {
+      el.innerHTML = '<span class="canva-badge canva-connected">✓ Canva</span>';
+    } else {
+      el.innerHTML = '<a href="/auth/canva" class="canva-badge canva-disconnected">Connect Canva</a>';
+    }
+  } catch(e) {}
+})();
 </script>
 </body>
 </html>

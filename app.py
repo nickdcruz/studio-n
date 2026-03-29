@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import json
 import os
 import re
@@ -12,9 +11,10 @@ import httpx
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import Response
 
 load_dotenv()
@@ -31,6 +31,7 @@ GITHUB_TOKEN       = os.getenv("GITHUB_TOKEN", "")
 ANTHROPIC_API_KEY  = os.getenv("ANTHROPIC_API_KEY", "")
 HTTP_USER          = os.getenv("HTTP_USER", "admin")
 HTTP_PASS          = os.getenv("HTTP_PASS", "changeme")
+SESSION_SECRET     = os.getenv("SESSION_SECRET", secrets.token_hex(32))
 PORT               = int(os.getenv("PORT", "5050"))
 anthropic_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 _agent_cache: dict = {}
@@ -55,28 +56,22 @@ THIRD_PARTY_MESSAGES = {
 
 # ── Auth middleware ───────────────────────────────────────────────
 
-class BasicAuthMiddleware(BaseHTTPMiddleware):
+PUBLIC_PATHS = {"/health", "/login"}
+
+class SessionAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path == "/health" or path.startswith("/api/stream/"):
+        if path in PUBLIC_PATHS or path.startswith("/api/stream/"):
             return await call_next(request)
-        auth = request.headers.get("Authorization", "")
-        if not auth.startswith("Basic "):
-            return Response("Unauthorized", status_code=401,
-                            headers={"WWW-Authenticate": 'Basic realm="Studio N"'})
-        try:
-            decoded   = base64.b64decode(auth[6:]).decode("utf-8")
-            user, pwd = decoded.split(":", 1)
-        except Exception:
-            return Response("Unauthorized", status_code=401,
-                            headers={"WWW-Authenticate": 'Basic realm="Studio N"'})
-        if not (secrets.compare_digest(user, HTTP_USER) and
-                secrets.compare_digest(pwd,  HTTP_PASS)):
-            return Response("Unauthorized", status_code=401,
-                            headers={"WWW-Authenticate": 'Basic realm="Studio N"'})
+        if not request.session.get("authenticated"):
+            if path.startswith("/api/"):
+                return JSONResponse({"error": "Not authenticated"}, status_code=401)
+            return RedirectResponse("/login", status_code=302)
         return await call_next(request)
 
-app.add_middleware(BasicAuthMiddleware)
+app.add_middleware(SessionAuthMiddleware)
+app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, session_cookie="studio_session",
+                   max_age=86400 * 7, https_only=False, same_site="lax")
 
 # ── Orchestration prompts ─────────────────────────────────────────
 
@@ -692,6 +687,29 @@ async def process_job(job_id: str, brief: str) -> None:
         _completed.pop(job_id, None)
 
 # ── Routes ────────────────────────────────────────────────────────
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    if request.session.get("authenticated"):
+        return RedirectResponse("/", status_code=302)
+    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+
+@app.post("/login", response_class=HTMLResponse)
+async def login_submit(request: Request):
+    form = await request.form()
+    username = form.get("username", "")
+    password = form.get("password", "")
+    if (secrets.compare_digest(username, HTTP_USER) and
+            secrets.compare_digest(password, HTTP_PASS)):
+        request.session["authenticated"] = True
+        return RedirectResponse("/", status_code=302)
+    return templates.TemplateResponse("login.html", {"request": request,
+                                                      "error": "Incorrect username or password."})
+
+@app.get("/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/login", status_code=302)
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):

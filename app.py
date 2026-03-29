@@ -9,6 +9,8 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+import uvicorn
+
 import httpx
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
@@ -21,6 +23,13 @@ from starlette.responses import Response
 
 load_dotenv()
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    force=True,
+)
+
 BASE_DIR    = Path(__file__).parent
 OUTPUTS_DIR = BASE_DIR / "outputs"
 OUTPUTS_DIR.mkdir(exist_ok=True)
@@ -29,12 +38,12 @@ app = FastAPI(title="Studio N")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 GITHUB_REPO        = os.getenv("GITHUB_REPO", "nickdcruz/nicklaus-marketing-agents")
-GITHUB_TOKEN       = os.getenv("GITHUB_TOKEN", "")
-ANTHROPIC_API_KEY  = os.getenv("ANTHROPIC_API_KEY", "")
+GITHUB_TOKEN       = os.environ.get("GITHUB_TOKEN")
+ANTHROPIC_API_KEY  = os.environ["ANTHROPIC_API_KEY"]
 HTTP_USER          = os.getenv("HTTP_USER", "admin")
 HTTP_PASS          = os.getenv("HTTP_PASS", "changeme")
 SESSION_SECRET     = os.getenv("SESSION_SECRET", secrets.token_hex(32))
-PORT               = int(os.getenv("PORT", "5050"))
+PORT               = int(os.environ.get("PORT", "5050"))
 anthropic_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 _agent_cache: dict = {}
 _jobs:        dict = {}
@@ -77,23 +86,17 @@ app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, session_cookie=
 
 # ── Orchestration prompts ─────────────────────────────────────────
 
-ORCHESTRATION_SUFFIX = """
-
----
-SYSTEM — ORCHESTRATION MODE: After your full analysis, append ONE JSON block and nothing after it:
+ORCHESTRATION_PREFIX = """SYSTEM INSTRUCTION — READ THIS BEFORE ANYTHING ELSE:
+You are in orchestration mode. Your job is to analyse the brief and decide which specialist agents are needed.
+After your analysis, end your response with a JSON block in this exact format — this is required:
 
 ```json
-{
-  "agents_needed": ["agent1", "agent2"],
-  "briefs": {
-    "agent1": "Complete brief exactly as you would send it",
-    "agent2": "Complete brief exactly as you would send it"
-  }
-}
+{"agents_needed": ["agent1", "agent2"], "briefs": {"agent1": "full brief text", "agent2": "full brief text"}}
 ```
 
 Valid agent names: callum, priya, dante, suki, felix, nadia, zara, reeva
-If no specialists needed: {"agents_needed": [], "briefs": {}}
+
+---
 """
 
 REVIEW_CASCADE_SUFFIX = """
@@ -142,6 +145,13 @@ def extract_brand_data(outputs: dict) -> dict:
     name_match = re.search(r"^#\s+(.+)$", combined, re.MULTILINE)
     brand_name = name_match.group(1).strip() if name_match else ""
 
+    photo_match = re.search(
+        r"(?:photography[:\s]+|photo\s+direction[:\s]+|visual\s+style[:\s]+|image\s+direction[:\s]+)"
+        r"([^\n]{10,120})",
+        combined, re.IGNORECASE)
+    photography = photo_match.group(1).strip() if photo_match else \
+        "Clean, professional product photography with natural lighting"
+
     return {
         "hex_colors":  hex_colors,
         "fonts":       chosen_fonts,
@@ -149,6 +159,7 @@ def extract_brand_data(outputs: dict) -> dict:
         "primary":     hex_colors[0] if hex_colors else "#1e293b",
         "secondary":   hex_colors[1] if len(hex_colors) > 1 else "#64748b",
         "accent":      hex_colors[2] if len(hex_colors) > 2 else "#3b82f6",
+        "photography": photography,
     }
 
 def _font_link(fonts: list[str]) -> str:
@@ -162,80 +173,268 @@ def _font_stack(fonts: list[str]) -> str:
 
 def _build_website_prompt(outputs: dict, brief: str) -> str:
     bd = extract_brand_data(outputs)
-    color_block = (
-        f"Primary: {bd['primary']}\n"
-        f"Secondary: {bd['secondary']}\n"
-        f"Accent: {bd['accent']}\n"
-        + ("\n".join(f"Additional: {c}" for c in bd["hex_colors"][3:]) if len(bd["hex_colors"]) > 3 else "")
-    )
-    font_link = _font_link(bd["fonts"])
+    p  = bd["primary"]
+    s  = bd["secondary"]
+    a  = bd["accent"]
+    font_link  = _font_link(bd["fonts"])
     font_stack = _font_stack(bd["fonts"])
     inputs = "\n\n".join(f"## {k.upper()}\n\n{v}" for k, v in outputs.items() if v)
 
-    return f"""You are generating a complete, production-ready B2B marketing website as a single HTML file.
+    return f"""You are a senior frontend engineer at a world-class design agency. Build a visually stunning, \
+premium B2B marketing website as a single self-contained HTML file. \
+Use only HTML, CSS, and inline SVG — zero external images, zero placeholder divs, \
+zero dashed-border boxes. Every pixel must look intentionally designed.
 
-BRAND COLORS (use these exact hex values throughout):
-{color_block}
+BRAND PALETTE — use these exact hex values, no substitutions:
+  Primary:   {p}
+  Secondary: {s}
+  Accent:    {a}
+  Tint A:    {p}14   (primary at ~8% opacity — subtle section backgrounds)
+  Tint B:    {p}28   (primary at ~16% opacity — cards, hover states)
 
 TYPOGRAPHY:
-Google Fonts CDN tag to include in <head>: {font_link}
-Font stack to use in CSS: {font_stack}
+  Include in <head>: {font_link}
+  CSS font-family: {font_stack}
 
-INPUTS FROM THE MARKETING TEAM:
+CONTENT INPUTS (all copy, features, and brand details come from here):
 {inputs}
 
-ORIGINAL BRIEF:
-{brief}
+BRIEF: {brief}
 
-REQUIREMENTS:
-- Single self-contained HTML5 file. Include the Google Fonts CDN <link> tag above in <head>.
-- All CSS inline in a <style> block. Use the exact hex colors above for all brand elements.
-- Add `html {{ scroll-behavior: smooth; }}` to the CSS so anchor links scroll smoothly.
-- Fully responsive — mobile-first, CSS Grid and Flexbox layout.
-- Page sections MUST use these exact id attributes (in this order):
-    <nav> or <header> — id="top"
-    Hero section       — id="hero"
-    Value proposition  — id="features"
-    Features section   — id="how-it-works"
-    Social proof       — id="testimonials"
-    CTA section        — id="contact"
-- Navigation links MUST use matching href anchors: href="#hero", href="#features", href="#how-it-works", href="#testimonials", href="#contact"
-- Navigation: logo/brand name links to href="#top", then 4 nav links to the sections above, then a CTA button (href="#contact") in primary color.
-- Hero section (id="hero"): bold headline (from copy inputs), subheadline, two CTA buttons (href="#features" and href="#contact"), and a PLACEHOLDER for a screen recording:
-  <div class="demo-placeholder">📹 Insert screen recording here — show the software in action</div>
-- Value proposition (id="features"): 3-column grid of key benefits with icons (use Unicode/emoji icons, not images).
-- Features section (id="how-it-works"): alternating text + demo placeholder layout. Each placeholder labeled with what to record.
-- Social proof (id="testimonials"): 2–3 quote cards with placeholder names (e.g. "Property Manager, Singapore").
-- CTA section (id="contact"): strong headline + primary button.
-- Footer: brand name, tagline, 3-column links.
-- Professional B2B aesthetic — clean, structured, confident. No stock photo placeholders. Use demo-placeholder divs styled with a dark dashed border and descriptive label for where real screen recordings go.
-- All demo-placeholder divs styled: background: #f1f5f9; border: 2px dashed #94a3b8; border-radius: 8px; padding: 40px; text-align: center; color: #64748b; font-size: 14px;
+━━━ SECTION-BY-SECTION VISUAL SPEC ━━━
 
-Output ONLY valid HTML. Start with <!DOCTYPE html>. End with </html>. No explanation before or after."""
+Each section below has a mandatory visual treatment. Follow it exactly.
+
+── NAV (id="top") ──
+  Full-width bar. background: {p}; height: 68px.
+  Max-width 1200px centred. Logo text: white, 700 weight, 17px.
+  Nav links: color rgba(255,255,255,0.65); hover color white; font-size 14px.
+  CTA button: background {a}; color white; border-radius 999px; padding 9px 22px; font-size 13px; font-weight 700; no border.
+  Smooth underline animation on nav link hover using CSS ::after pseudo-element.
+
+── HERO (id="hero") ──
+  min-height: 100vh; position: relative; overflow: hidden.
+  Background: radial-gradient(ellipse 130% 90% at 65% 50%, {p} 0%, {p}ee 45%, {s} 100%).
+  Floating decorative shapes (position: absolute, pointer-events: none, z-index 0):
+    — Large circle: width 700px, height 700px, border-radius 50%, background rgba(255,255,255,0.04), top: -15%, right: -10%
+    — Medium circle: width 320px, height 320px, border-radius 50%, background {a}28, bottom: -8%, left: -5%
+    — Rotated square: width 180px, height 180px, background rgba(255,255,255,0.03), transform rotate(45deg), top: 20%, right: 20%
+  Two-column flex layout (align-items: center, gap: 60px, padding: 120px 8% 80px):
+    LEFT COLUMN (flex 1.1):
+      Eyebrow: text from inputs, uppercase, {a}, font-size 11px, letter-spacing 3px, font-weight 700, margin-bottom 18px.
+      H1: main headline from copy inputs, white, font-size clamp(42px,5.5vw,72px), font-weight 800, line-height 1.08, margin-bottom 22px.
+      Subtitle: white at 75% opacity, font-size 18px, line-height 1.65, max-width 480px, margin-bottom 36px.
+      Two CTA buttons side-by-side (flex, gap 14px):
+        Primary: background {a}, color white, padding 14px 28px, border-radius 10px, font-size 15px, font-weight 700.
+        Secondary: background rgba(255,255,255,0.1), color white, border: 1px solid rgba(255,255,255,0.25), same padding.
+    RIGHT COLUMN (flex 1): inline SVG product screen mockup, viewBox="0 0 520 360":
+      Outer drop shadow: filter drop-shadow(0 32px 64px rgba(0,0,0,0.4)).
+      Frame rect: x=0 y=0 w=520 h=360 rx=14, fill=#0f172a.
+      Title bar: rect x=0 y=0 w=520 h=40 rx=14, fill={p}.
+        Traffic-light circles: cx=20,32,44 cy=20 r=6, fills #ff5f57, #febc2e, #28c840.
+        Title text: x=260 y=25, text-anchor=middle, fill=rgba(255,255,255,0.5), font-size=12.
+      Content area (below y=40):
+        — Sidebar: rect x=0 y=40 w=130 h=320, fill=rgba(0,0,0,0.2).
+          3 sidebar nav items as rounded rects: y=60,96,132, x=12, w=108, h=24, rx=6;
+          first one filled {a}40, others rgba(255,255,255,0.05). Small square icons (8×8) at x=20.
+        — Main content (x>130):
+          Metric cards row (y=56): 3 rects, each 90×56, rx=8, fill=rgba(255,255,255,0.06), x=148,256,364.
+            Inside each: big number text in {a} (font-size=18, y=80), small label in rgba(255,255,255,0.4) (font-size=9, y=96).
+          Bar chart (y=128 to 260): 6 vertical bars at x=152,178,204,230,256,282, width=18, rx=3.
+            Heights vary: 80,110,60,130,90,120 (bars grow downward from y=260, so y = 260-height).
+            Bars filled {a}; last bar slightly lighter ({a}99).
+          Table rows (x=310, y=136): 4 rows, height=28 each, width=200, rx=4;
+            alternating fill rgba(255,255,255,0.04) and transparent.
+            Short text lines: rect w=60 h=6 rx=3 fill=rgba(255,255,255,0.2) and w=40 h=6 rx=3 fill={a}60.
+
+── FEATURES (id="features") — value proposition ──
+  background: white; padding: 100px 8%.
+  Section header centred (margin-bottom 56px):
+    Overline: "WHY CHOOSE US" (or relevant), {a}, 11px, letter-spacing 3px, font-weight 700.
+    H2: brand proposition headline from inputs, {p}, font-size clamp(28px,3.5vw,42px), font-weight 800.
+    Subtitle: 16px, color #64748b, max-width 560px, centred.
+  3-column CSS grid (grid-template-columns: repeat(3,1fr); gap: 28px). Each card:
+    background: white; border-radius: 20px; padding: 36px 28px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04);
+    border-top: 3px solid {a};
+    transition: transform 0.2s, box-shadow 0.2s;
+    On hover: transform translateY(-6px); box-shadow: 0 16px 48px rgba(0,0,0,0.12).
+    Icon: inline SVG 52×52px — a circle fill={p}18, inside it a relevant geometric path/shape in {p} (e.g. checkmark, graph bars, gear spokes, lightning bolt — use actual SVG path data, not emoji).
+    H3: {p}, font-size 17px, font-weight 700, margin: 18px 0 10px.
+    Body: #64748b, font-size 14px, line-height 1.7.
+
+── HOW IT WORKS (id="how-it-works") — features in depth ──
+  background: {p}08; padding: 100px 8%.
+  Section header centred (same style as above).
+  2–3 alternating rows (flex, align-items centre, gap 72px, margin-bottom 80px).
+  Odd rows: text left, visual right. Even rows: visual left, text right.
+  TEXT SIDE (flex 1):
+    Step badge: inline block, {a}, font-size 48px, font-weight 900, opacity 0.12, position absolute, top -10px, left -6px. (The number sits as a giant ghost behind the heading.)
+    H3: {p}, 22px, 700.
+    Body: #475569, 15px, line-height 1.7, margin-bottom 16px.
+    Bullet list: each item has a 4px wide left border in {a} and padding-left 14px.
+  VISUAL SIDE (flex 1): inline SVG "feature screen", viewBox="0 0 440 300":
+    Container rect: rx=12, fill=#1e293b, w=440, h=300.
+    Top bar: h=36, fill={p}, rx=12 (top corners).
+      Three circles traffic-light style. Tab labels: 2–3 small rounded rects fill=rgba(255,255,255,0.15).
+    Content: design a unique abstract UI for each feature step using rects, circles, polylines.
+      Use {a} for highlighted elements, rgba(255,255,255,0.08) for row/card backgrounds.
+      Make each SVG visually different — vary the layout between a table, a chart, a form, a map grid, etc.
+
+── TESTIMONIALS (id="testimonials") ──
+  background: {p}; padding: 90px 8%.
+  Section header centred in white.
+  2–3 testimonial cards in flex (gap 24px). Each card:
+    background: rgba(255,255,255,0.07); border-radius: 20px; padding: 36px 32px; flex: 1;
+    border: 1px solid rgba(255,255,255,0.1);
+    Quote mark SVG (position: absolute, top: 20px, left: 24px): a large " mark, fill={a}, opacity 0.35, font-size 80px (use SVG text element).
+    Quote text: white at 90% opacity, 15px, italic, line-height 1.7, padding-top 32px.
+    Separator: 1px solid rgba(255,255,255,0.15), margin 20px 0.
+    Avatar row: inline SVG circle (r=22, fill={a}33, stroke={a}, stroke-width=1.5) with initials text, plus name/title.
+    Name: white, 13px, 700. Title: rgba(255,255,255,0.55), 12px.
+
+── CTA (id="contact") ──
+  position: relative; overflow: hidden; padding: 110px 8%; text-align: centre.
+  Background: linear-gradient(135deg, {a} 0%, {p} 100%).
+  Decorative rings (position: absolute, pointer-events none):
+    — Circle 600px, border: 2px solid rgba(255,255,255,0.08), border-radius 50%, centred top-left -200px,-200px.
+    — Circle 400px, same style, bottom-right -150px,-150px.
+  H2: white, clamp(32px,4vw,52px), 800, margin-bottom 18px.
+  Subtitle: rgba(255,255,255,0.8), 17px, margin-bottom 40px.
+  Two buttons: Primary white bg + {p} text; Secondary transparent + white border + white text.
+
+── FOOTER ──
+  background: #0f172a; padding: 60px 8% 32px; color: rgba(255,255,255,0.45).
+  3-column grid: brand+tagline+social icons | nav links | contact info.
+  Brand name white 700. Links hover white. Divider line then copyright bar, font-size 12px.
+
+━━━ TECHNICAL REQUIREMENTS ━━━
+
+MANDATORY IDs — these are non-negotiable. Every section must carry exactly these id attributes.
+Do NOT invent custom ids based on brand names or content. Use exactly these strings:
+  <nav>  or  <header>        →  id="top"
+  Hero section               →  id="hero"
+  Value proposition section  →  id="features"
+  How-it-works section       →  id="how-it-works"
+  Testimonials section       →  id="testimonials"
+  CTA / contact section      →  id="contact"
+
+MANDATORY NAV HREFS — every nav link must use exactly these href values:
+  href="#hero"  href="#features"  href="#how-it-works"  href="#testimonials"  href="#contact"
+
+MANDATORY CSS — include in the <style> block:
+  html {{ scroll-behavior: smooth; }}
+
+- Single self-contained HTML5 file. Google Fonts CDN <link> in <head>. All CSS in one <style> block.
+- Responsive: columns stack below 768px; nav links collapse on mobile.
+- All SVG elements must be self-contained inline SVG with explicit viewBox. No <image> tags inside SVG.
+- No external images. No placeholder divs. No dashed-border boxes. No emoji as icons.
+- All content (headlines, copy, feature names, testimonials) must come from the marketing inputs above.
+- You MUST generate ALL six sections plus footer before closing </html>. Do not stop early.
+
+Output ONLY valid HTML. Start with <!DOCTYPE html>. End with </html>. Zero preamble, zero explanation."""
 
 def _build_onepager_prompt(outputs: dict, brief: str) -> str:
     bd = extract_brand_data(outputs)
-    font_link = _font_link(bd["fonts"])
+    p  = bd["primary"]
+    s  = bd["secondary"]
+    a  = bd["accent"]
+    font_link  = _font_link(bd["fonts"])
     font_stack = _font_stack(bd["fonts"])
     inputs = "\n\n".join(f"## {k.upper()}\n\n{v}" for k, v in outputs.items() if v)
-    return f"""Generate a complete, print-ready HTML one-pager for a B2B product.
+    return f"""You are a senior designer producing a premium B2B sales one-pager as a print-ready HTML file. \
+This document goes in front of enterprise buyers and investors. \
+It must look like a top-agency production piece. \
+Use only HTML, CSS, and inline SVG — zero external images, zero placeholder divs, zero dashed boxes.
 
-BRAND COLORS: Primary: {bd['primary']} | Secondary: {bd['secondary']} | Accent: {bd['accent']}
-FONTS CDN: {font_link}
-Font stack: {font_stack}
+BRAND PALETTE:
+  Primary:   {p}
+  Secondary: {s}
+  Accent:    {a}
 
-INPUTS:
+TYPOGRAPHY:
+  Include in <head>: {font_link}
+  CSS font-family: {font_stack}
+
+CONTENT INPUTS:
 {inputs}
 
-ORIGINAL BRIEF: {brief}
+BRIEF: {brief}
 
-REQUIREMENTS:
-- Self-contained HTML, Google Fonts CDN <link> in <head>, all CSS inline.
-- Designed to print as one A4 page (210mm × 297mm). Use @page and @media print CSS.
-- Layout: header with brand name + tagline, one-sentence value prop (large), 3 key points in columns, one demo-placeholder (labeled "📹 Product screenshot here"), one testimonial quote, clear CTA with URL placeholder, footer.
-- Use exact hex colors above. Professional, premium feel — suitable for a board meeting or investor packet.
-- demo-placeholder: background:#f1f5f9; border:2px dashed #94a3b8; border-radius:6px; padding:30px; text-align:center; color:#64748b;
-- @media print: .no-print display none; page break controls; margins: 15mm.
+━━━ PRINT LAYOUT SPEC — ONE A4 PAGE ━━━
+
+The entire document must fit on a single A4 sheet (210mm × 297mm) when printed.
+Use a fixed-width wrapper: width: 794px; margin: 0 auto; (794px ≈ A4 at 96 dpi).
+No section should overflow. Tight spacing throughout.
+
+── PRINT TOOLBAR (.no-print) ──
+  Visible on screen, hidden on print. White bar above the page.
+  "Save as PDF" button: background {p}; color white; border-radius 7px; padding 8px 20px; font-size 13px; font-weight 700.
+  "Close" button: border 1px solid #e2e8f0; color #475569; same padding.
+
+── HEADER BAND (full 794px width, height ~80px) ──
+  background: linear-gradient(90deg, {p} 0%, {s} 100%); padding: 0 36px.
+  Brand name: white, 20px, 800 weight. Tagline beside it: rgba(255,255,255,0.65), 12px.
+  Right side: inline SVG logomark — a 40×40 geometric shape using {a} and white (abstract mark, not text).
+
+── HERO STRIP (background {p}14, padding 28px 36px) ──
+  Two columns (flex, align-items centre):
+    Left (~58%): Value proposition headline from inputs, {p}, 26px, 800, line-height 1.2, max 2 lines.
+    Right (~42%): One sentence supporting statement, #475569, 13px, line-height 1.6.
+
+── STATS BAR (background {p}, padding 18px 36px) ──
+  Flex row, justify-content space-evenly.
+  Extract 3 concrete metrics from inputs (e.g. speed improvement, ROI, time-to-value).
+  Each stat block: centred, divider lines between.
+    Number: {a}, 30px, 800 weight.
+    Label: rgba(255,255,255,0.65), 10px, uppercase, letter-spacing 1.5px.
+  Thin vertical dividers: 1px solid rgba(255,255,255,0.18).
+
+── MAIN BODY (padding 28px 36px, flex row, gap 28px) ──
+  LEFT COLUMN (~52%, flex-direction column):
+    "Why [BrandName]" heading: {p}, 14px, 700, letter-spacing 0.5px, margin-bottom 16px.
+    3 feature blocks stacked (margin-bottom 18px each):
+      Inline SVG icon (28×28): circle fill={p}18, geometric path inside in {p}.
+      Feature title: {p}, 13px, 700, margin-bottom 5px.
+      Feature body: #64748b, 12px, line-height 1.6.
+      Left accent: border-left 3px solid {a}; padding-left 12px; on the title+body.
+    Testimonial quote block (margin-top 20px):
+      background {p}0d; border-radius 10px; padding 16px 18px;
+      Large inline SVG open-quote mark, fill={a}, opacity 0.4, float left, width 20px.
+      Quote text: #334155, 12px, italic, line-height 1.6.
+      Attribution: {p}, 11px, 700, margin-top 8px.
+  RIGHT COLUMN (~48%):
+    Inline SVG product dashboard illustration, viewBox="0 0 340 280":
+      Frame: rect w=340 h=280 rx=10 fill=#0f172a.
+      Top bar: h=32 fill={p} rx=10 (top corners only — bottom is square).
+        Traffic circles: cx=14,26,38 cy=16 r=5 fills #ff5f57, #febc2e, #28c840.
+        Tab strip: 3 small rounded rects fill=rgba(255,255,255,0.1), w=48, h=16, y=8, x=60/116/172.
+      Left sidebar: rect x=0 y=32 w=80 h=248 fill=rgba(0,0,0,0.18).
+        4 nav items: rounded rects y=48,76,104,132 x=8 w=64 h=20 rx=5;
+        first fill={a}50, rest rgba(255,255,255,0.05).
+      Main panel (x>80):
+        KPI cards row (y=42): 3 cards, each 70×44 rx=6 fill=rgba(255,255,255,0.06) x=90,172,254.
+          Big number text {a} font-size=14 y=62; small label rgba(255,255,255,0.35) font-size=7 y=76.
+        Chart area (y=96 to 200 x=88 to 330):
+          Background rect fill=rgba(255,255,255,0.03) rx=6.
+          5 vertical bars x=100,130,160,190,220 width=18 rx=3 fill={a}; heights 60,85,45,100,70 (from y=200 upward).
+          Line overlay: polyline points connecting bar tops, stroke={a}80 stroke-width=1.5 fill=none.
+        Table rows (y=212 to 272): 3 rows h=18 w=240 x=88 rx=3;
+          alternating fill rgba(255,255,255,0.03)/transparent.
+          Two text stubs per row: w=50 h=5 rx=2 and w=30 h=5 rx=2, fill=rgba(255,255,255,0.15) and {a}60.
+
+── FOOTER BAR (background {p}, height 36px, padding 0 36px) ──
+  Flex, align-items centre, justify-content space-between.
+  Brand name: white, 11px, 700. Centre: website URL placeholder: rgba(255,255,255,0.6), 10px. Right: "Confidential": rgba(255,255,255,0.4), 10px.
+
+━━━ TECHNICAL REQUIREMENTS ━━━
+- Self-contained HTML5. Google Fonts CDN in <head>. All CSS in one <style> block.
+- @page {{ size: A4; margin: 0; }}
+- body {{ margin: 0; background: #f1f5f9; }}
+- .page {{ width: 794px; margin: 20px auto; background: white; }}
+- @media print {{ .no-print {{ display: none !important; }} body {{ background: white; margin: 0; }} .page {{ margin: 0; box-shadow: none; }} }}
+- Zero external images. Zero placeholder divs. Zero dashed boxes. Every zone fully designed.
+- All content (metrics, features, testimonial, brand name) must come from the inputs above.
 
 Output ONLY valid HTML. Start with <!DOCTYPE html>. No explanation."""
 
@@ -268,7 +467,7 @@ REQUIREMENTS:
 Output ONLY valid HTML. Start with <!DOCTYPE html>. No explanation."""
 
 async def assemble_html(prompt: str, system_msg: str) -> str:
-    html = await call_agent(system_msg, prompt, model="claude-opus-4-6", max_tokens=8192)
+    html = await call_agent(system_msg, prompt, model="claude-opus-4-6", max_tokens=16000)
     m = re.search(r"<!DOCTYPE", html, re.IGNORECASE)
     return html[m.start():] if m else html
 
@@ -285,10 +484,12 @@ Output clean final markdown. No meta-commentary."""
                             model="claude-opus-4-6", max_tokens=4096)
 
 ASSEMBLERS = {
-    "html_website":  (".html",  "website"),
-    "html_onepager": (".html",  "one-pager"),
-    "social_pack":   (".md",    "social-pack"),
-    "canva_json":    (".json",  "canva"),
+    "html_website":        (".html",  "website"),
+    "html_onepager":       (".html",  "one-pager"),
+    "social_pack":         (".md",    "social-pack"),
+    "canva_json":          (".json",  "canva"),
+    "social_pack_cascade": (".md",    "social-pack"),
+    "video_brief":         (".html",  "video-brief"),
 }
 
 # ── Canva JSON template ───────────────────────────────────────────
@@ -382,6 +583,130 @@ async def assemble_canva_json(outputs: dict, brief: str) -> str:
         except json.JSONDecodeError:
             pass
     return raw
+
+# ── Social cascade + video brief assembly ─────────────────────────
+
+async def assemble_social_cascade(outputs: dict, brief: str) -> str:
+    """Fire Callum (LinkedIn) + Priya (Instagram/Facebook) in parallel, return social pack markdown."""
+    all_content = "\n\n".join(f"## {k.upper()}\n\n{v}" for k, v in outputs.items() if v)
+    social_brief = (
+        f"Original brief: {brief}\n\n"
+        "APPROVED MARKETING OUTPUTS (use as source of truth for all content):\n\n"
+        f"{all_content}\n\n---\n\n"
+        "Produce one piece of final, copy-paste-ready social content. "
+        "Make it specific to the brand and campaign above — no filler, no placeholders."
+    )
+
+    async def run(name: str) -> tuple[str, str]:
+        sys_ = await fetch_agent(name)
+        out  = await call_agent(sys_, social_brief)
+        return name, out
+
+    results = await asyncio.gather(run("callum"), run("priya"))
+    agent_outputs = dict(results)
+    callum_out = agent_outputs.get("callum", "")
+    priya_out  = agent_outputs.get("priya", "")
+
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+    return (
+        f"# Social Content Pack\n\n"
+        f"**Generated:** {ts}  \n"
+        f"**Brief:** {brief}\n\n"
+        "---\n\n"
+        "## LinkedIn Post (Callum)\n\n"
+        f"{callum_out}\n\n"
+        "---\n\n"
+        "## Instagram & Facebook (Priya)\n\n"
+        f"{priya_out}\n"
+    )
+
+
+async def assemble_video_brief(outputs: dict, brief: str) -> str:
+    """Fire Dante for a video brief, return PDF-ready HTML."""
+    all_content = "\n\n".join(f"## {k.upper()}\n\n{v}" for k, v in outputs.items() if v)
+    bd = extract_brand_data(outputs)
+    video_brief_brief = (
+        f"Original brief: {brief}\n\n"
+        "APPROVED MARKETING OUTPUTS:\n\n"
+        f"{all_content}\n\n---\n\n"
+        "Produce a complete, formatted video brief document. Include:\n"
+        "1. Campaign overview and creative concept\n"
+        "2. Shot list (numbered, each with shot type, location/setting, action, duration)\n"
+        "3. Script outline (hook → problem → solution → CTA structure)\n"
+        "4. TikTok specs (aspect ratio 9:16, duration 15–60s, caption, hashtags, hook text)\n"
+        "5. Instagram Reels specs (aspect ratio 9:16, duration 15–90s, cover frame, caption)\n"
+        "6. Hook direction (first 3 seconds — what grabs attention, exact opening line)\n"
+        "7. Talent and production notes\n\n"
+        "Use the brand colors and typography from the approved outputs above. "
+        "Be specific — this brief goes straight to the production team."
+    )
+    sys_ = await fetch_agent("dante")
+    content = await call_agent(sys_, video_brief_brief, model="claude-sonnet-4-6", max_tokens=4096)
+
+    # Wrap in print-ready HTML
+    primary   = bd["primary"]
+    secondary = bd["secondary"]
+    accent    = bd["accent"]
+    font_link = _font_link(bd["fonts"])
+    font_stack = _font_stack(bd["fonts"])
+    body_html = _md_to_html(content)
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Brief — {bd.get('brand_name', 'Campaign')}</title>
+  {font_link}
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{ font-family: {font_stack}; background: #f8fafc; color: #1e293b; padding: 0; }}
+    .toolbar {{ background: {primary}; padding: 12px 32px; display: flex; gap: 10px; align-items: center; }}
+    .toolbar-brand {{ color: white; font-size: 14px; font-weight: 700; flex: 1; }}
+    .btn {{ background: white; color: {primary}; border: none; padding: 8px 18px; border-radius: 6px;
+            font-size: 12px; font-weight: 700; cursor: pointer; }}
+    .btn-outline {{ background: transparent; color: white; border: 1px solid rgba(255,255,255,0.4); }}
+    .doc {{ max-width: 820px; margin: 0 auto; padding: 48px 40px 80px; background: white;
+            min-height: 100vh; box-shadow: 0 0 40px rgba(0,0,0,0.06); }}
+    .doc-header {{ border-left: 4px solid {primary}; padding-left: 20px; margin-bottom: 36px; }}
+    .doc-header h1 {{ font-size: 22px; font-weight: 800; color: {primary}; margin-bottom: 4px; }}
+    .doc-meta {{ font-size: 12px; color: #64748b; }}
+    .brief-box {{ background: {primary}0d; border: 1px solid {primary}30; border-radius: 8px;
+                  padding: 12px 16px; margin-bottom: 32px; font-size: 13px; color: #475569; }}
+    h1 {{ font-size: 20px; font-weight: 800; color: {primary}; margin: 32px 0 12px; }}
+    h2 {{ font-size: 17px; font-weight: 700; color: {primary}; margin: 28px 0 10px;
+          padding-bottom: 6px; border-bottom: 1px solid {primary}20; }}
+    h3 {{ font-size: 14px; font-weight: 700; color: #334155; margin: 18px 0 8px; }}
+    p  {{ font-size: 14px; line-height: 1.8; margin-bottom: 12px; color: #334155; }}
+    ul {{ padding-left: 20px; margin-bottom: 14px; }}
+    li {{ font-size: 14px; line-height: 1.7; margin-bottom: 5px; color: #334155; }}
+    strong {{ font-weight: 700; color: #1e293b; }}
+    hr {{ border: none; border-top: 1px solid #e2e8f0; margin: 24px 0; }}
+    @media print {{
+      .toolbar {{ display: none !important; }}
+      body {{ background: white; }}
+      .doc {{ box-shadow: none; padding: 20px; }}
+    }}
+  </style>
+</head>
+<body>
+  <div class="toolbar no-print">
+    <div class="toolbar-brand">📹 Video Brief</div>
+    <button class="btn" onclick="window.print()">Save as PDF</button>
+    <button class="btn btn-outline" onclick="window.close()">Close</button>
+  </div>
+  <div class="doc">
+    <div class="doc-header">
+      <h1>Video Production Brief</h1>
+      <div class="doc-meta">Generated {ts}</div>
+    </div>
+    <div class="brief-box"><strong>Brief:</strong> {brief}</div>
+    {body_html}
+  </div>
+</body>
+</html>"""
+
 
 # ── GitHub + Anthropic ────────────────────────────────────────────
 
@@ -511,6 +836,38 @@ def _print_page(title: str, brief: str, date: str, body: str) -> str:
 <div class="brief-box"><strong>Brief:</strong> {brief}</div>
 {body}</body></html>"""
 
+# ── Agent extraction (lightweight second call) ────────────────────
+
+async def extract_agents_from_analysis(analysis: str, brief: str) -> list[str]:
+    """Dedicated extraction call — returns only a JSON array of agent names.
+    Uses a cheap model with max_tokens=200 so it has nothing to do but output the array."""
+    prompt = (
+        f"Marketing brief: {brief}\n\n"
+        f"Strategic analysis:\n{analysis[:2000]}\n\n"
+        "Which specialist agents are needed for this project? "
+        "Choose from: nadia, felix, callum, priya, dante, suki, reeva, zara\n"
+        "Return only a JSON array of names. Example: [\"reeva\", \"felix\", \"nadia\"]\n"
+        "No explanation. No other text. Just the array."
+    )
+    try:
+        raw = await call_agent(
+            "You extract agent names from marketing briefs. Output only a JSON array of names, nothing else.",
+            prompt,
+            model="claude-haiku-4-5-20251001",
+            max_tokens=200,
+        )
+        m = re.search(r"\[.*?\]", raw, re.DOTALL)
+        if m:
+            names = json.loads(m.group(0))
+            valid = [n for n in names if n in VALID_AGENTS]
+            logging.info("extraction call returned %s → valid agents: %s", names, valid)
+            return valid
+        logging.warning("extraction call had no JSON array in response: %r", raw[:200])
+    except Exception as e:
+        logging.error("extraction call failed: %s", e)
+    return []
+
+
 # ── Job processor ─────────────────────────────────────────────────
 
 async def process_job(job_id: str, brief: str) -> None:
@@ -524,23 +881,53 @@ async def process_job(job_id: str, brief: str) -> None:
     try:
         await emit({"type": "status", "message": "Marcus is reading your brief..."})
         marcus_system = await fetch_agent("marcus")
+        # Prefix puts the JSON requirement as the very first thing Marcus reads,
+        # before his own identity prompt, so it can't be overridden by prose flow.
         marcus_raw = await call_agent(
-            marcus_system + ORCHESTRATION_SUFFIX, brief, model="claude-opus-4-6")
+            ORCHESTRATION_PREFIX + marcus_system, brief, model="claude-opus-4-6")
 
+        # Strip JSON block from analysis text if Marcus included one.
         json_match      = re.search(r"```json\s*(\{.*?\})\s*```", marcus_raw, re.DOTALL)
-        marcus_analysis = marcus_raw
+        marcus_analysis = marcus_raw[:json_match.start()].strip() if json_match else marcus_raw
         agents_needed:  list[str] = []
         agent_briefs:   dict[str, str] = {}
 
+        # Layer 1: try to parse Marcus's own JSON block (best quality — includes written briefs).
         if json_match:
-            marcus_analysis = marcus_raw[:json_match.start()].strip()
             try:
                 p             = json.loads(json_match.group(1))
                 agents_needed = p.get("agents_needed", [])
                 agent_briefs  = p.get("briefs", {})
-            except json.JSONDecodeError:
-                pass
+                logging.info("job %s — layer1: parsed Marcus JSON block, agents=%s", job_id, agents_needed)
+            except json.JSONDecodeError as e:
+                logging.error("job %s — layer1: Marcus JSON parse failed: %s", job_id, e)
+        else:
+            logging.warning("job %s — layer1: no JSON block in Marcus response", job_id)
 
+        # Layer 2: dedicated extraction call — lightweight model, max_tokens=200, returns only an array.
+        # Runs whenever layer 1 produced no agents. Cannot be confused by prose.
+        if not agents_needed:
+            await emit({"type": "status", "message": "Extracting agent plan..."})
+            agents_needed = await extract_agents_from_analysis(marcus_analysis, brief)
+            if agents_needed:
+                agent_briefs = {n: f"Original brief: {brief}\n\nMarcus's analysis:\n{marcus_analysis}"
+                                for n in agents_needed}
+                logging.info("job %s — layer2: extraction call resolved agents=%s", job_id, agents_needed)
+            else:
+                logging.warning("job %s — layer2: extraction call returned no agents", job_id)
+
+        # Layer 3: last-resort text scan for agent name mentions.
+        if not agents_needed:
+            mentioned = [n for n in VALID_AGENTS if re.search(rf"\b{n}\b", marcus_raw, re.IGNORECASE)]
+            if mentioned:
+                agents_needed = mentioned
+                agent_briefs  = {n: f"Original brief: {brief}\n\nMarcus's analysis:\n{marcus_analysis}"
+                                 for n in mentioned}
+                logging.warning("job %s — layer3: text-scan inferred agents=%s", job_id, mentioned)
+            else:
+                logging.warning("job %s — layer3: no agents found anywhere; pipeline will produce no output", job_id)
+
+        logging.info("job %s — final agents_needed: %s", job_id, agents_needed)
         job["marcus_analysis"] = marcus_analysis
         await emit({"type": "marcus_analysis", "content": marcus_analysis})
 
@@ -560,7 +947,10 @@ async def process_job(job_id: str, brief: str) -> None:
             results = await asyncio.gather(*[run_s1(n) for n in valid_s1])
             stage1_outputs = dict(results)
             for name, content in stage1_outputs.items():
+                logging.info("job %s — stage1 %s: %d chars", job_id, name, len(content))
                 await emit({"type": "specialist", "agent": name, "content": content})
+        else:
+            logging.warning("job %s — no valid stage1 agents to run (valid_s1=%s)", job_id, valid_s1)
 
         job["stage1_outputs"] = stage1_outputs
 
@@ -586,9 +976,13 @@ async def process_job(job_id: str, brief: str) -> None:
             if cm:
                 try:
                     cascade_plan = json.loads(cm.group(1)).get("cascade", cascade_plan)
-                except json.JSONDecodeError:
-                    pass
+                except json.JSONDecodeError as e:
+                    logging.error("job %s — failed to parse Marcus cascade JSON: %s\nRaw block: %s",
+                                  job_id, e, cm.group(1)[:500])
+            else:
+                logging.warning("job %s — Marcus review returned no cascade block", job_id)
 
+            logging.info("job %s — cascade plan: %s", job_id, cascade_plan)
             job["marcus_review"] = marcus_review
             await emit({"type": "review", "content": marcus_review})
 
@@ -618,6 +1012,7 @@ async def process_job(job_id: str, brief: str) -> None:
             results = await asyncio.gather(*[run_cascade(n) for n in next_agents])
             cascade_outputs = dict(results)
             for name, content in cascade_outputs.items():
+                logging.info("job %s — cascade %s: %d chars", job_id, name, len(content))
                 await emit({"type": "cascade_output", "agent": name, "content": content})
 
         job["cascade_outputs"] = cascade_outputs
@@ -640,6 +1035,17 @@ async def process_job(job_id: str, brief: str) -> None:
         # Assembly — generate and save each file sequentially so one failure
         # never blocks the others. Each step logs on error but continues.
         all_outputs = {**stage1_outputs, **cascade_outputs}
+
+        logging.info(
+            "job %s — all_outputs before assembly: keys=%s stage1=%s cascade=%s total_chars=%d",
+            job_id,
+            list(all_outputs.keys()),
+            list(stage1_outputs.keys()),
+            list(cascade_outputs.keys()),
+            sum(len(v) for v in all_outputs.values()),
+        )
+        if not all_outputs:
+            logging.warning("job %s — all_outputs is empty, skipping assembly entirely", job_id)
 
         if all_outputs:
             await emit({"type": "assembly_start", "assembly_type": "bundle"})
@@ -679,19 +1085,41 @@ async def process_job(job_id: str, brief: str) -> None:
             except Exception as e:
                 logging.error("Assembly canva_json failed: %s\n%s", e, traceback.format_exc())
 
+            # 4. Social Content Pack (Callum + Priya in parallel)
+            await emit({"type": "status", "message": "Generating social content pack (Callum + Priya)..."})
+            try:
+                social_cascade_content = await assemble_social_cascade(all_outputs, brief)
+                social_cascade_path = save_assembled(job, "social_pack_cascade", social_cascade_content)
+                bundle["social_pack_cascade"] = social_cascade_path.name
+                logging.info("Assembly saved: %s", social_cascade_path)
+            except Exception as e:
+                logging.error("Assembly social_pack_cascade failed: %s\n%s", e, traceback.format_exc())
+
+            # 5. Video Brief (Dante)
+            await emit({"type": "status", "message": "Generating video brief (Dante)..."})
+            try:
+                video_brief_content = await assemble_video_brief(all_outputs, brief)
+                video_brief_path = save_assembled(job, "video_brief", video_brief_content)
+                bundle["video_brief"] = video_brief_path.name
+                logging.info("Assembly saved: %s", video_brief_path)
+            except Exception as e:
+                logging.error("Assembly video_brief failed: %s\n%s", e, traceback.format_exc())
+
             await emit({
                 "type":  "assembly_bundle_done",
                 "files": bundle,
                 "labels": {
-                    "html_website":  "HTML Website",
-                    "html_onepager": "A4 One-Pager (PDF-ready)",
-                    "canva_json":    "Canva Template (JSON)",
+                    "html_website":        "HTML Website",
+                    "html_onepager":       "A4 One-Pager (PDF-ready)",
+                    "canva_json":          "Canva Template (JSON)",
+                    "social_pack_cascade": "Social Content Pack",
+                    "video_brief":         "Video Brief (PDF-ready)",
                 },
             })
 
-            # Optional social pack
+            # Optional compiled social pack (legacy social_pack assembly type)
             if cascade_plan.get("assembly") == "social_pack":
-                await emit({"type": "status", "message": "Compiling social content pack..."})
+                await emit({"type": "status", "message": "Compiling full social content pack..."})
                 try:
                     social_content = await assemble_social_pack(all_outputs, brief)
                     social_path = save_assembled(job, "social_pack", social_content)
@@ -912,7 +1340,7 @@ def _parse_output_file(path: Path) -> dict:
     info = {"filename": path.name, "size_kb": round(path.stat().st_size/1024,1),
             "brief": path.stem, "date": "", "is_html": path.suffix == ".html",
             "is_json": path.suffix == ".json", "label": ""}
-    for l in ["website", "one-pager", "social-pack", "canva"]:
+    for l in ["website", "one-pager", "social-pack", "video-brief", "canva"]:
         if l in path.name: info["label"] = l; break
     try:
         text = path.read_text(encoding="utf-8")
@@ -1034,3 +1462,8 @@ async def view_output(filename: str):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", "5050"))
+    uvicorn.run(app, host="0.0.0.0", port=port)

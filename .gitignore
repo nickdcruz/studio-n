@@ -1,8 +1,23 @@
+# Environment
 .env
+.env.*
+!.env.example
+
+# Python
 venv/
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# App runtime
 outputs/
 logs/
+*.session
+*.session.json
+
+# macOS
 .DS_Store

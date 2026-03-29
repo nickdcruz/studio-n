@@ -212,7 +212,7 @@
     <div id="assembly-divider" style="display:none;" class="stage-divider"><span>Final Assembly</span></div>
     <div id="assembly-card" class="assembly-card" style="display:none;">
       <div class="card-head">
-        <span class="assembly-badge">3 Files Ready</span>
+        <span class="assembly-badge" id="bundle-badge">5 Files Ready</span>
       </div>
       <div id="bundle-files" class="bundle-files"></div>
     </div>
@@ -366,24 +366,25 @@ function handleEvent(e) {
 
     case 'assembly_start':
       document.getElementById('assembly-divider').style.display = 'flex';
-      document.getElementById('status-text').textContent = 'Assembling 3 output files in parallel...';
+      document.getElementById('status-text').textContent = 'Assembling 5 output files...';
       break;
 
     case 'assembly_bundle_done': {
       const container = document.getElementById('bundle-files');
       container.innerHTML = '';
-      const fileOrder = ['html_website', 'html_onepager', 'canva_json'];
+      const fileOrder = ['html_website', 'html_onepager', 'canva_json', 'social_pack_cascade', 'video_brief'];
+      let fileCount = 0;
       for (const key of fileOrder) {
         const fname = ev.files[key];
         const label = ev.labels[key];
         if (!fname) continue;
+        fileCount++;
         const isHtml = fname.endsWith('.html');
         const isJson = fname.endsWith('.json');
+        const isMd   = fname.endsWith('.md');
         const viewBtn = isHtml
           ? `<a class="view-btn" href="/outputs/view/${fname}" target="_blank">Open →</a>`
           : '';
-        const dlClass = isJson ? 'dl-btn json' : 'dl-btn';
-        const dlLabel = isJson ? '⬇ JSON' : '⬇ HTML';
         const row = document.createElement('div');
         row.className = 'bundle-file';
         row.innerHTML = `
@@ -393,10 +394,12 @@ function handleEvent(e) {
           </div>
           <div class="bundle-actions">
             ${viewBtn}
-            <a class="${dlClass}" href="/outputs/download/${fname}">⬇ ${isHtml ? 'HTML' : isJson ? 'JSON' : 'MD'}</a>
+            <a class="dl-btn${isJson ? ' json' : ''}" href="/outputs/download/${fname}">⬇ ${isHtml ? 'HTML' : isJson ? 'JSON' : 'MD'}</a>
           </div>`;
         container.appendChild(row);
       }
+      const badge = document.getElementById('bundle-badge');
+      if (badge) badge.textContent = fileCount + ' Files Ready';
       document.getElementById('assembly-card').style.display = 'block';
       break;
     }

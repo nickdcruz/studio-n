@@ -1,8 +1,10 @@
 import asyncio
 import json
+import logging
 import os
 import re
 import secrets
+import traceback
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -626,32 +628,47 @@ async def process_job(job_id: str, brief: str) -> None:
             job["marcus_cascade_review"] = r2
             await emit({"type": "cascade_review", "content": r2})
 
-        # Assembly — always generate all 3 files in parallel when there are outputs
+        # Assembly — generate and save each file sequentially so one failure
+        # never blocks the others. Each step logs on error but continues.
         all_outputs = {**stage1_outputs, **cascade_outputs}
 
         if all_outputs:
             await emit({"type": "assembly_start", "assembly_type": "bundle"})
-            await emit({"type": "status", "message": "Assembling 3 output files in parallel..."})
+            bundle = {}
 
-            website_content, onepager_content, canva_json_str = await asyncio.gather(
-                assemble_html(
+            # 1. HTML Website
+            await emit({"type": "status", "message": "Building HTML website..."})
+            try:
+                website_content = await assemble_html(
                     _build_website_prompt(all_outputs, brief),
-                    "You generate complete, production-ready B2B HTML websites with Google Fonts. Output only valid HTML."),
-                assemble_html(
+                    "You generate complete, production-ready B2B HTML websites with Google Fonts. Output only valid HTML.")
+                website_path = save_assembled(job, "html_website", website_content)
+                bundle["html_website"] = website_path.name
+                logging.info("Assembly saved: %s", website_path)
+            except Exception as e:
+                logging.error("Assembly html_website failed: %s\n%s", e, traceback.format_exc())
+
+            # 2. A4 One-Pager
+            await emit({"type": "status", "message": "Building A4 one-pager..."})
+            try:
+                onepager_content = await assemble_html(
                     _build_onepager_prompt(all_outputs, brief),
-                    "You generate complete, print-ready A4 HTML one-pagers with Google Fonts. Output only valid HTML."),
-                assemble_canva_json(all_outputs, brief),
-            )
+                    "You generate complete, print-ready A4 HTML one-pagers with Google Fonts. Output only valid HTML.")
+                onepager_path = save_assembled(job, "html_onepager", onepager_content)
+                bundle["html_onepager"] = onepager_path.name
+                logging.info("Assembly saved: %s", onepager_path)
+            except Exception as e:
+                logging.error("Assembly html_onepager failed: %s\n%s", e, traceback.format_exc())
 
-            website_path  = save_assembled(job, "html_website",  website_content)
-            onepager_path = save_assembled(job, "html_onepager", onepager_content)
-            canva_path    = save_assembled(job, "canva_json",    canva_json_str)
-
-            bundle = {
-                "html_website":  website_path.name,
-                "html_onepager": onepager_path.name,
-                "canva_json":    canva_path.name,
-            }
+            # 3. Canva JSON Template
+            await emit({"type": "status", "message": "Building Canva JSON template..."})
+            try:
+                canva_json_str = await assemble_canva_json(all_outputs, brief)
+                canva_path = save_assembled(job, "canva_json", canva_json_str)
+                bundle["canva_json"] = canva_path.name
+                logging.info("Assembly saved: %s", canva_path)
+            except Exception as e:
+                logging.error("Assembly canva_json failed: %s\n%s", e, traceback.format_exc())
 
             await emit({
                 "type":  "assembly_bundle_done",
@@ -666,20 +683,24 @@ async def process_job(job_id: str, brief: str) -> None:
             # Optional social pack
             if cascade_plan.get("assembly") == "social_pack":
                 await emit({"type": "status", "message": "Compiling social content pack..."})
-                social_content = await assemble_social_pack(all_outputs, brief)
-                social_path = save_assembled(job, "social_pack", social_content)
-                await emit({
-                    "type":          "assembly_done",
-                    "assembly_type": "social_pack",
-                    "label":         "Social Content Pack",
-                    "filename":      social_path.name,
-                })
+                try:
+                    social_content = await assemble_social_pack(all_outputs, brief)
+                    social_path = save_assembled(job, "social_pack", social_content)
+                    await emit({
+                        "type":          "assembly_done",
+                        "assembly_type": "social_pack",
+                        "label":         "Social Content Pack",
+                        "filename":      social_path.name,
+                    })
+                except Exception as e:
+                    logging.error("Assembly social_pack failed: %s", e)
 
         md_path = save_markdown(job)
         _completed[job_id] = job
         await emit({"type": "done", "job_id": job_id, "saved_as": md_path.name})
 
     except Exception as exc:
+        logging.error("process_job %s failed: %s\n%s", job_id, exc, traceback.format_exc())
         await emit({"type": "error", "message": str(exc)})
     finally:
         await asyncio.sleep(7200)

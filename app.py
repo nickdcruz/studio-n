@@ -12,6 +12,8 @@ from pathlib import Path
 import uvicorn
 
 import httpx
+import requests
+from apify_client import ApifyClient
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
@@ -37,13 +39,15 @@ OUTPUTS_DIR.mkdir(exist_ok=True)
 app = FastAPI(title="Studio N")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-GITHUB_REPO        = os.getenv("GITHUB_REPO", "nickdcruz/nicklaus-marketing-agents")
-GITHUB_TOKEN       = os.environ.get("GITHUB_TOKEN")
-ANTHROPIC_API_KEY  = os.environ["ANTHROPIC_API_KEY"]
-HTTP_USER          = os.getenv("HTTP_USER", "admin")
-HTTP_PASS          = os.getenv("HTTP_PASS", "changeme")
-SESSION_SECRET     = os.getenv("SESSION_SECRET", secrets.token_hex(32))
-PORT               = int(os.environ.get("PORT", "5050"))
+GITHUB_REPO         = os.getenv("GITHUB_REPO", "nickdcruz/nicklaus-marketing-agents")
+GITHUB_TOKEN        = os.environ.get("GITHUB_TOKEN")
+ANTHROPIC_API_KEY   = os.environ["ANTHROPIC_API_KEY"]
+HTTP_USER           = os.getenv("HTTP_USER", "admin")
+HTTP_PASS           = os.getenv("HTTP_PASS", "changeme")
+SESSION_SECRET      = os.getenv("SESSION_SECRET", secrets.token_hex(32))
+PORT                = int(os.environ.get("PORT", "5050"))
+APIFY_API_TOKEN     = os.environ.get("APIFY_API_TOKEN")
+BUFFER_ACCESS_TOKEN = os.environ.get("BUFFER_ACCESS_TOKEN")
 anthropic_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 _agent_cache: dict = {}
 _jobs:        dict = {}
@@ -708,6 +712,119 @@ async def assemble_video_brief(outputs: dict, brief: str) -> str:
 </html>"""
 
 
+# ── Apify / Zara competitor enrichment ───────────────────────────
+
+_COMPETITOR_RE = re.compile(
+    r"\b(competitor[s]?|competitive|intelligence|benchmark|audit|landscape|market research|rival[s]?)\b",
+    re.IGNORECASE,
+)
+
+def _extract_handles(text: str) -> list[str]:
+    """Pull @handles and names after 'competitor/rival/vs' from text."""
+    handles = re.findall(r"@([\w.]{2,30})", text)
+    names   = re.findall(
+        r"(?:competitor[s]?|rival[s]?|vs\.?)[:\s]+([A-Za-z0-9_.]{2,30})",
+        text, re.IGNORECASE,
+    )
+    seen: dict[str, None] = {}
+    for h in handles + names:
+        seen[h.lstrip("@").lower()] = None
+    return list(seen.keys())
+
+def _run_apify_sync(handles: list[str]) -> dict:
+    client = ApifyClient(APIFY_API_TOKEN)
+    run = client.actor("apify/instagram-scraper").call(run_input={
+        "directUrls": [f"https://www.instagram.com/{h}/" for h in handles],
+        "resultsType": "posts",
+        "resultsLimit": 5,
+    })
+    items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
+    return {"handles": handles, "posts": items[:20]}
+
+async def enrich_zara_with_apify(zara_output: str, brief: str) -> str:
+    """Append live Instagram competitor data to Zara's output when brief signals research."""
+    if not APIFY_API_TOKEN:
+        return zara_output
+    if not _COMPETITOR_RE.search(brief):
+        return zara_output
+    handles = _extract_handles(brief + "\n" + zara_output)
+    if not handles:
+        return zara_output
+    logging.info("Apify: scraping Instagram for handles %s", handles)
+    try:
+        loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(None, _run_apify_sync, handles)
+    except Exception as e:
+        logging.error("Apify scrape failed: %s", e)
+        return zara_output
+    posts = data.get("posts", [])
+    if not posts:
+        return zara_output
+    lines = ["\n\n---\n\n## Competitor Intelligence — Live Instagram Data\n"]
+    for post in posts[:10]:
+        handle  = post.get("ownerUsername", "unknown")
+        caption = (post.get("caption") or "")[:200].replace("\n", " ")
+        likes   = post.get("likesCount", 0)
+        comments = post.get("commentsCount", 0)
+        url     = post.get("url", "")
+        lines.append(f"**@{handle}** — {likes} likes · {comments} comments")
+        if caption:
+            lines.append(f"> {caption.strip()}")
+        if url:
+            lines.append(f"[View post]({url})")
+        lines.append("")
+    return zara_output + "\n".join(lines)
+
+
+# ── Buffer integration ────────────────────────────────────────────
+
+def _post_to_buffer_sync(text: str) -> dict:
+    profiles_r = requests.get(
+        "https://api.bufferapp.com/1/profiles.json",
+        params={"access_token": BUFFER_ACCESS_TOKEN},
+        timeout=15,
+    )
+    profiles_r.raise_for_status()
+    profiles = profiles_r.json()
+    linkedin = [p for p in profiles if p.get("service") == "linkedin"]
+    target   = linkedin if linkedin else profiles
+    if not target:
+        raise ValueError("No Buffer profiles found")
+    profile_id = target[0]["id"]
+    update_r = requests.post(
+        "https://api.bufferapp.com/1/updates/create.json",
+        data={
+            "access_token": BUFFER_ACCESS_TOKEN,
+            "profile_ids[]": profile_id,
+            "text": text[:3000],
+        },
+        timeout=15,
+    )
+    update_r.raise_for_status()
+    return update_r.json()
+
+async def post_to_buffer(social_pack_md: str) -> None:
+    if not BUFFER_ACCESS_TOKEN:
+        return
+    m = re.search(
+        r"## LinkedIn Post \(Callum\)\s*\n\n(.+?)(?:\n\n---|\Z)",
+        social_pack_md, re.DOTALL,
+    )
+    if not m:
+        logging.warning("Buffer: LinkedIn post not found in social pack")
+        return
+    linkedin_text = m.group(1).strip()
+    if not linkedin_text:
+        return
+    logging.info("Buffer: queuing LinkedIn post (%d chars)", len(linkedin_text))
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _post_to_buffer_sync, linkedin_text)
+        logging.info("Buffer: queued successfully — %s", result)
+    except Exception as e:
+        logging.error("Buffer post failed: %s", e)
+
+
 # ── GitHub + Anthropic ────────────────────────────────────────────
 
 async def fetch_agent(name: str) -> str:
@@ -946,6 +1063,10 @@ async def process_job(job_id: str, brief: str) -> None:
         if valid_s1:
             results = await asyncio.gather(*[run_s1(n) for n in valid_s1])
             stage1_outputs = dict(results)
+            # Zara: append live competitor Instagram data when brief signals research
+            if "zara" in stage1_outputs:
+                await emit({"type": "status", "message": "Zara: running competitor intelligence scrape..."})
+                stage1_outputs["zara"] = await enrich_zara_with_apify(stage1_outputs["zara"], brief)
             for name, content in stage1_outputs.items():
                 logging.info("job %s — stage1 %s: %d chars", job_id, name, len(content))
                 await emit({"type": "specialist", "agent": name, "content": content})
@@ -1092,6 +1213,8 @@ async def process_job(job_id: str, brief: str) -> None:
                 social_cascade_path = save_assembled(job, "social_pack_cascade", social_cascade_content)
                 bundle["social_pack_cascade"] = social_cascade_path.name
                 logging.info("Assembly saved: %s", social_cascade_path)
+                # Post LinkedIn post to Buffer publishing queue
+                await post_to_buffer(social_cascade_content)
             except Exception as e:
                 logging.error("Assembly social_pack_cascade failed: %s\n%s", e, traceback.format_exc())
 

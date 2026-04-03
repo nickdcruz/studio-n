@@ -3,119 +3,323 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Studio N</title>
+  <title>Studio N — v4.0</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1e293b; min-height: 100vh; }
-
-    /* NAV */
-    nav { background: #1e293b; padding: 14px 32px; display: flex; align-items: center; justify-content: space-between; }
-    .nav-brand { color: white; font-size: 16px; font-weight: 700; text-decoration: none; }
-    .nav-brand span { font-weight: 400; opacity: 0.45; font-size: 12px; margin-left: 6px; }
-    .nav-right { display: flex; align-items: center; gap: 6px; }
-    .nav-link { color: #94a3b8; font-size: 13px; text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: all 0.15s; }
-    .nav-link:hover { background: rgba(255,255,255,0.1); color: white; }
-
-    /* CLIENT TABS */
-    .client-bar { background: white; border-bottom: 1px solid #e2e8f0; padding: 0 32px; display: flex; gap: 2px; }
-    .ctab {
-      font-size: 13px; font-weight: 600; padding: 13px 18px; cursor: pointer;
-      border: none; background: none; color: #64748b;
-      border-bottom: 3px solid transparent; margin-bottom: -1px;
-      transition: all 0.15s; white-space: nowrap; display: flex; align-items: center; gap: 6px;
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+      min-height: 100vh;
     }
-    .ctab:hover { color: #1e293b; }
-    .ctab.active { color: #1e293b; border-bottom-color: #1e293b; }
-    .ctab.active.wibiz   { color: #15803d; border-bottom-color: #15803d; }
-    .ctab.active.ai      { color: #1d4ed8; border-bottom-color: #1d4ed8; }
-    .ctab.active.charter { color: #a16207; border-bottom-color: #a16207; }
-    .ctab-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .ctab.active.wibiz   .ctab-dot { background: #15803d; }
-    .ctab.active.ai      .ctab-dot { background: #1d4ed8; }
-    .ctab.active.charter .ctab-dot { background: #a16207; }
-    .ctab:not(.active)   .ctab-dot { background: #cbd5e1; }
 
-    /* CONTAINER */
-    .container { max-width: 820px; margin: 0 auto; padding: 28px 24px 80px; }
+    /* ── NAV ──────────────────────────────────────────────────── */
+    nav {
+      background: #0f172a;
+      padding: 0 32px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .nav-left { display: flex; align-items: center; gap: 16px; }
+    .nav-brand {
+      color: white;
+      font-size: 15px;
+      font-weight: 700;
+      text-decoration: none;
+      letter-spacing: -0.3px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: opacity 0.15s;
+    }
+    .nav-brand:hover { opacity: 0.8; }
+    .nav-brand-icon {
+      width: 28px; height: 28px; border-radius: 7px;
+      background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 800; color: white; letter-spacing: -0.5px;
+      flex-shrink: 0;
+    }
+    .nav-brand-text { display: flex; flex-direction: column; line-height: 1; }
+    .nav-brand-name { font-size: 13px; font-weight: 700; color: white; }
+    .nav-brand-sub  { font-size: 10px; color: rgba(255,255,255,0.35); font-weight: 400; margin-top: 1px; }
+    .version-badge {
+      font-size: 10px; font-weight: 700; color: #64748b;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 2px 8px; border-radius: 20px; letter-spacing: 0.3px;
+    }
+    .nav-right { display: flex; align-items: center; gap: 4px; }
+    .nav-link {
+      color: #94a3b8; font-size: 13px; text-decoration: none;
+      padding: 6px 12px; border-radius: 6px; transition: all 0.15s; font-weight: 500;
+    }
+    .nav-link:hover { background: rgba(255,255,255,0.08); color: white; }
 
-    /* PROJECT NAME (Other tab only) */
+    /* ── HERO ─────────────────────────────────────────────────── */
+    .hero {
+      background: linear-gradient(160deg, #0f172a 0%, #1e293b 60%, #0f172a 100%);
+      padding: 40px 32px 0;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        radial-gradient(circle at 20% 50%, rgba(59,130,246,0.08) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(99,102,241,0.06) 0%, transparent 40%);
+      pointer-events: none;
+    }
+    .hero-grid {
+      position: absolute; inset: 0; pointer-events: none; opacity: 0.04;
+      background-image: linear-gradient(rgba(255,255,255,0.4) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(255,255,255,0.4) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+    .hero-inner {
+      max-width: 820px; margin: 0 auto;
+      position: relative; z-index: 1;
+    }
+    .hero-eyebrow {
+      font-size: 11px; font-weight: 600; color: #3b82f6;
+      text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 10px;
+    }
+    .hero-title {
+      font-size: 28px; font-weight: 800; color: white;
+      letter-spacing: -0.5px; line-height: 1.2; margin-bottom: 10px;
+    }
+    .hero-title span { color: #3b82f6; }
+    .hero-sub {
+      font-size: 14px; color: rgba(255,255,255,0.45); line-height: 1.6;
+      max-width: 520px; margin-bottom: 28px; font-weight: 400;
+    }
+
+    /* ── CLIENT TABS (inside hero) ────────────────────────────── */
+    .client-bar {
+      display: flex; gap: 4px;
+      border-bottom: none;
+      padding: 0;
+    }
+    .ctab {
+      font-size: 12px; font-weight: 600; padding: 10px 16px; cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.05);
+      color: rgba(255,255,255,0.5);
+      border-bottom: none;
+      border-radius: 8px 8px 0 0;
+      transition: all 0.2s; white-space: nowrap;
+      display: flex; align-items: center; gap: 7px;
+      margin-bottom: 0;
+    }
+    .ctab:hover {
+      background: rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.8);
+    }
+    .ctab.active {
+      background: #f1f5f9;
+      color: #1e293b;
+      border-color: transparent;
+    }
+    .ctab.active.wibiz   { background: #f0fdf4; color: #15803d; }
+    .ctab.active.ai      { background: #eff6ff; color: #1d4ed8; }
+    .ctab.active.charter { background: #fefce8; color: #a16207; }
+    .ctab.active.other-tab { background: #f8fafc; color: #334155; }
+
+    .ctab-dot {
+      width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+      background: rgba(255,255,255,0.2);
+    }
+    .ctab.active.wibiz   .ctab-dot { background: #16a34a; }
+    .ctab.active.ai      .ctab-dot { background: #2563eb; }
+    .ctab.active.charter .ctab-dot { background: #ca8a04; }
+    .ctab.active.other-tab .ctab-dot { background: #64748b; }
+
+    /* ── MAIN CONTENT ─────────────────────────────────────────── */
+    .main-area { background: #f1f5f9; }
+    .container { max-width: 820px; margin: 0 auto; padding: 24px 24px 80px; }
+
+    /* ── CLIENT CONTEXT BAR ───────────────────────────────────── */
+    .context-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .context-label {
+      font-size: 12px; font-weight: 600; color: #94a3b8;
+      text-transform: uppercase; letter-spacing: 0.8px;
+    }
+    .context-client {
+      font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+    }
+    .ctx-wibiz   { background: #dcfce7; color: #15803d; }
+    .ctx-ai      { background: #dbeafe; color: #1d4ed8; }
+    .ctx-charter { background: #fef9c3; color: #a16207; }
+    .ctx-other   { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+
+    /* ── PROJECT NAME ROW ─────────────────────────────────────── */
     .project-name-row { display: none; margin-bottom: 14px; }
     .project-name-row.visible { display: block; }
     .project-name-row input {
-      width: 100%; border: 1px solid #e2e8f0; border-radius: 8px;
-      padding: 10px 13px; font-size: 14px; font-family: inherit;
+      width: 100%; border: 1px solid #e2e8f0; border-radius: 10px;
+      padding: 11px 14px; font-size: 14px; font-family: inherit;
       color: #1e293b; outline: none; transition: border-color 0.2s;
+      background: white; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
     }
-    .project-name-row input:focus { border-color: #475569; }
+    .project-name-row input:focus { border-color: #94a3b8; box-shadow: 0 0 0 3px rgba(148,163,184,0.15); }
 
-    /* BRIEF PANEL */
-    .brief-panel { background: white; border-radius: 12px; padding: 22px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); margin-bottom: 20px; }
+    /* ── BRIEF PANEL ──────────────────────────────────────────── */
+    .brief-panel {
+      background: white;
+      border-radius: 14px;
+      padding: 24px 26px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
+      margin-bottom: 20px;
+      border: 1px solid rgba(0,0,0,0.05);
+      position: relative;
+      overflow: hidden;
+    }
+    .brief-panel::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--accent-bar, linear-gradient(90deg, #3b82f6, #6366f1));
+      border-radius: 14px 14px 0 0;
+    }
 
-    .field-label { display: block; font-weight: 600; font-size: 11px; color: #64748b; margin-bottom: 7px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .field-label {
+      display: block; font-weight: 600; font-size: 11px; color: #94a3b8;
+      margin-bottom: 7px; text-transform: uppercase; letter-spacing: 0.6px;
+    }
 
     .title-input {
-      width: 100%; border: 1px solid #e2e8f0; border-radius: 8px;
-      padding: 10px 13px; font-size: 15px; font-weight: 600; font-family: inherit;
-      color: #1e293b; outline: none; transition: border-color 0.2s; margin-bottom: 16px;
+      width: 100%; border: 1px solid #e8ecf0; border-radius: 10px;
+      padding: 11px 14px; font-size: 15px; font-weight: 600;
+      font-family: inherit; color: #1e293b; outline: none;
+      transition: all 0.2s; margin-bottom: 18px;
+      background: #f8fafc;
     }
-    .title-input:focus { border-color: #475569; }
-    .title-input::placeholder { font-weight: 400; color: #94a3b8; }
+    .title-input:focus {
+      border-color: #94a3b8; background: white;
+      box-shadow: 0 0 0 3px rgba(148,163,184,0.12);
+    }
+    .title-input::placeholder { font-weight: 400; color: #94a3b8; font-size: 14px; }
+
+    .brief-divider {
+      height: 1px; background: #f1f5f9; margin: 0 0 18px;
+    }
 
     textarea {
-      width: 100%; height: 120px; border: 1px solid #e2e8f0; border-radius: 8px;
-      padding: 12px 14px; font-size: 14px; font-family: inherit; line-height: 1.6;
-      resize: vertical; outline: none; transition: border-color 0.2s; color: #1e293b;
+      width: 100%; height: 130px; border: 1px solid #e8ecf0; border-radius: 10px;
+      padding: 13px 14px; font-size: 14px; font-family: inherit;
+      line-height: 1.65; resize: vertical; outline: none;
+      transition: all 0.2s; color: #334155; background: #f8fafc;
     }
-    textarea:focus { border-color: #475569; }
+    textarea:focus {
+      border-color: #94a3b8; background: white;
+      box-shadow: 0 0 0 3px rgba(148,163,184,0.12);
+    }
 
-    .brief-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
-    .hint { font-size: 12px; color: #94a3b8; max-width: 480px; }
+    .brief-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: 14px; gap: 12px;
+    }
+    .hint { font-size: 12px; color: #94a3b8; max-width: 420px; line-height: 1.5; }
+    .hint strong { color: #64748b; }
+
+    .submit-row { display: flex; align-items: center; gap: 10px; }
+    .char-count { font-size: 12px; color: #cbd5e1; }
+
     .btn-submit {
-      background: #1e293b; color: white; border: none; padding: 11px 26px;
-      border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
-      transition: background 0.15s; white-space: nowrap;
+      background: #0f172a; color: white; border: none;
+      padding: 11px 24px; border-radius: 9px; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: all 0.15s; white-space: nowrap;
+      font-family: inherit; letter-spacing: -0.1px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     }
-    .btn-submit:hover:not(:disabled) { background: #334155; }
-    .btn-submit:disabled { background: #94a3b8; cursor: not-allowed; }
+    .btn-submit:hover:not(:disabled) {
+      background: #1e293b;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      transform: translateY(-1px);
+    }
+    .btn-submit:active:not(:disabled) { transform: translateY(0); }
+    .btn-submit:disabled { background: #cbd5e1; cursor: not-allowed; box-shadow: none; }
 
-    /* SAVE NOTICE */
-    .save-notice { display: none; background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 11px 16px; margin-bottom: 16px; font-size: 13px; color: #166534; align-items: center; gap: 8px; }
+    /* ── SAVE NOTICE ──────────────────────────────────────────── */
+    .save-notice {
+      display: none; background: #f0fdf4; border: 1px solid #86efac;
+      border-radius: 10px; padding: 12px 16px; margin-bottom: 16px;
+      font-size: 13px; color: #166534; align-items: center; gap: 8px;
+    }
     .save-notice.visible { display: flex; }
 
-    /* STATUS BAR */
-    .status-bar { display: none; background: white; border-radius: 10px; padding: 14px 18px; margin-bottom: 20px; border-left: 3px solid #1e293b; box-shadow: 0 1px 3px rgba(0,0,0,0.07); align-items: flex-start; gap: 12px; }
+    /* ── STATUS BAR ───────────────────────────────────────────── */
+    .status-bar {
+      display: none; background: white; border-radius: 12px; padding: 16px 20px;
+      margin-bottom: 20px; border-left: 3px solid #3b82f6;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06); align-items: flex-start; gap: 14px;
+    }
     .status-bar.visible { display: flex; }
-    .spinner { width: 16px; height: 16px; border: 2px solid #e2e8f0; border-top-color: #1e293b; border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; margin-top: 2px; }
+    .spinner {
+      width: 16px; height: 16px; border: 2px solid #e2e8f0; border-top-color: #3b82f6;
+      border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; margin-top: 2px;
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
     .status-text { font-size: 13px; color: #475569; font-weight: 500; }
-    .agent-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
-    .chip { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 20px; transition: all 0.3s; }
+    .agent-chips { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+    .chip {
+      font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px;
+      transition: all 0.3s;
+    }
     .chip-waiting  { background: #f1f5f9; color: #94a3b8; }
     .chip-running  { background: #dbeafe; color: #2563eb; animation: pulse 1.4s ease-in-out infinite; }
     .chip-cascade  { background: #ede9fe; color: #6d28d9; animation: pulse 1.4s ease-in-out infinite; }
     .chip-done     { background: #dcfce7; color: #16a34a; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.55} }
 
-    /* OUTPUT AREA */
+    /* ── OUTPUT AREA ──────────────────────────────────────────── */
     .output-area { display: none; }
     .output-area.visible { display: block; }
 
-    /* STAGE DIVIDER */
-    .stage-divider { display: flex; align-items: center; gap: 12px; margin: 24px 0 16px; }
-    .stage-divider span { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #94a3b8; white-space: nowrap; }
-    .stage-divider::before, .stage-divider::after { content: ''; flex: 1; height: 1px; background: #e2e8f0; }
+    .stage-divider {
+      display: flex; align-items: center; gap: 12px; margin: 26px 0 18px;
+    }
+    .stage-divider span {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.8px; color: #94a3b8; white-space: nowrap;
+    }
+    .stage-divider::before, .stage-divider::after {
+      content: ''; flex: 1; height: 1px; background: #e2e8f0;
+    }
 
-    /* CARDS */
-    .card { background: white; border-radius: 12px; padding: 22px 24px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
-    .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid #f1f5f9; }
+    /* ── CARDS ────────────────────────────────────────────────── */
+    .card {
+      background: white; border-radius: 12px; padding: 22px 24px;
+      margin-bottom: 14px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 8px rgba(0,0,0,0.03);
+      border: 1px solid rgba(0,0,0,0.04);
+    }
+    .card-head {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid #f1f5f9;
+    }
     .agent-label { display: flex; flex-direction: column; gap: 2px; }
-    .agent-name { font-size: 13px; font-weight: 700; color: #1e293b; }
-    .agent-role { font-size: 11px; color: #94a3b8; }
+    .agent-name  { font-size: 13px; font-weight: 700; color: #1e293b; }
+    .agent-role  { font-size: 11px; color: #94a3b8; }
 
-    .badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 5px; letter-spacing: 0.2px; }
+    .badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 5px; }
     .badge-marcus   { background: #f1f5f9; color: #1e293b; }
-    .badge-review   { background: #1e293b; color: white; }
-    .badge-cascade-review { background: #1e293b; color: white; }
+    .badge-review   { background: #0f172a; color: white; }
+    .badge-cascade-review { background: #0f172a; color: white; }
     .badge-callum   { background: #dbeafe; color: #1d4ed8; }
     .badge-priya    { background: #fce7f3; color: #9d174d; }
     .badge-dante    { background: #ede9fe; color: #6d28d9; }
@@ -124,38 +328,61 @@
     .badge-nadia    { background: #ffedd5; color: #9a3412; }
     .badge-zara     { background: #e0f2fe; color: #0369a1; }
     .badge-reeva    { background: #fdf4ff; color: #7e22ce; }
-    .review-card { border-left: 3px solid #1e293b; }
+    .review-card { border-left: 3px solid #0f172a; }
 
-    /* FLAG CARD */
-    .flag-card { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; display: flex; gap: 12px; align-items: flex-start; }
+    .flag-card {
+      background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
+      padding: 14px 18px; margin-bottom: 12px; display: flex; gap: 12px; align-items: flex-start;
+    }
     .flag-icon { font-size: 15px; flex-shrink: 0; }
     .flag-title { font-size: 13px; font-weight: 700; color: #92400e; margin-bottom: 3px; }
     .flag-msg { font-size: 13px; color: #78350f; line-height: 1.5; }
 
-    /* ASSEMBLY */
-    .assembly-card { background: white; border: 2px solid #1e293b; border-radius: 12px; padding: 22px 24px; margin-bottom: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.09); }
-    .assembly-badge { background: #1e293b; color: white; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 5px; }
-    .bundle-files { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
-    .bundle-file { background: #f8fafc; border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .assembly-card {
+      background: white; border: 2px solid #0f172a; border-radius: 14px;
+      padding: 22px 24px; margin-bottom: 14px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }
+    .assembly-badge {
+      background: #0f172a; color: white; font-size: 12px; font-weight: 700;
+      padding: 4px 12px; border-radius: 6px;
+    }
+    .bundle-files { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+    .bundle-file {
+      background: #f8fafc; border-radius: 9px; padding: 12px 16px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      border: 1px solid #f1f5f9;
+    }
     .bundle-label { font-size: 13px; font-weight: 600; color: #1e293b; }
     .bundle-filename { font-family: monospace; font-size: 11px; color: #64748b; margin-top: 2px; }
     .bundle-actions { display: flex; gap: 6px; flex-shrink: 0; }
-    .view-btn { background: #1e293b; color: white; border: none; padding: 7px 14px; border-radius: 7px; font-size: 12px; font-weight: 700; cursor: pointer; text-decoration: none; white-space: nowrap; transition: background 0.15s; }
-    .view-btn:hover { background: #334155; }
-    .dl-btn { background: none; border: 1px solid #e2e8f0; color: #475569; padding: 7px 14px; border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: none; white-space: nowrap; transition: all 0.15s; }
+    .view-btn {
+      background: #0f172a; color: white; border: none; padding: 7px 14px;
+      border-radius: 7px; font-size: 12px; font-weight: 700; cursor: pointer;
+      text-decoration: none; white-space: nowrap; transition: background 0.15s;
+    }
+    .view-btn:hover { background: #1e293b; }
+    .dl-btn {
+      background: none; border: 1px solid #e2e8f0; color: #475569; padding: 7px 14px;
+      border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer;
+      text-decoration: none; white-space: nowrap; transition: all 0.15s;
+    }
     .dl-btn:hover { background: #f8fafc; color: #1e293b; }
     .dl-btn.json { border-color: #e9d5ff; color: #7c3aed; }
     .dl-btn.json:hover { background: #faf5ff; }
 
-    /* ACTION BUTTONS */
     .card-actions { display: flex; gap: 6px; align-items: center; }
-    .action-btn { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 6px; cursor: pointer; border: 1px solid #e2e8f0; background: none; color: #64748b; transition: all 0.15s; white-space: nowrap; }
+    .action-btn {
+      font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 6px;
+      cursor: pointer; border: 1px solid #e2e8f0; background: none;
+      color: #64748b; transition: all 0.15s; white-space: nowrap;
+    }
     .action-btn:hover { background: #f8fafc; color: #1e293b; }
     .action-btn.copied { border-color: #86efac; color: #16a34a; }
     .action-btn.pdf-btn { border-color: #bfdbfe; color: #2563eb; }
     .action-btn.pdf-btn:hover { background: #eff6ff; }
 
-    /* MARKDOWN */
+    /* ── MARKDOWN ─────────────────────────────────────────────── */
     .md { font-size: 14px; line-height: 1.75; color: #334155; }
     .md h1 { font-size: 17px; font-weight: 700; color: #1e293b; margin: 18px 0 8px; }
     .md h2 { font-size: 15px; font-weight: 700; color: #1e293b; margin: 16px 0 6px; }
@@ -174,58 +401,92 @@
 </head>
 <body>
 
+<!-- NAV -->
 <nav>
-  <a href="/" class="nav-brand">Studio N <span>by Marcus</span></a>
+  <div class="nav-left">
+    <a href="/" class="nav-brand">
+      <div class="nav-brand-icon">N</div>
+      <div class="nav-brand-text">
+        <span class="nav-brand-name">Studio N</span>
+        <span class="nav-brand-sub">by Marcus</span>
+      </div>
+    </a>
+    <span class="version-badge">v4.0</span>
+  </div>
   <div class="nav-right">
     <a href="/outputs" class="nav-link">Outputs</a>
-    <a href="/logout" class="nav-link" style="color:#64748b;">Sign out</a>
+    <a href="/logout" class="nav-link" style="color:#475569;">Sign out</a>
   </div>
 </nav>
 
-<!-- CLIENT TABS -->
-<div class="client-bar">
-  <button class="ctab wibiz active" onclick="setClient('wibiz', this)">
-    <span class="ctab-dot"></span> WiBiz
-  </button>
-  <button class="ctab ai" onclick="setClient('ai-living', this)">
-    <span class="ctab-dot"></span> AI Living
-  </button>
-  <button class="ctab charter" onclick="setClient('charter', this)">
-    <span class="ctab-dot"></span> Club Charter
-  </button>
-  <button class="ctab other-tab" onclick="setClient('other', this)">
-    <span class="ctab-dot"></span> Other Projects
-  </button>
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-grid"></div>
+  <div class="hero-inner">
+    <div class="hero-eyebrow">AI Marketing Department</div>
+    <h1 class="hero-title">Brief <span>Marcus.</span><br>The team handles the rest.</h1>
+    <p class="hero-sub">8 specialist agents — brand, copy, social, video, decks, research — directed by Marcus. Select your client, title the job, write the brief.</p>
+
+    <!-- CLIENT TABS -->
+    <div class="client-bar">
+      <button class="ctab wibiz active" onclick="setClient('wibiz', this)">
+        <span class="ctab-dot"></span> WiBiz
+      </button>
+      <button class="ctab ai" onclick="setClient('ai-living', this)">
+        <span class="ctab-dot"></span> AI Living
+      </button>
+      <button class="ctab charter" onclick="setClient('charter', this)">
+        <span class="ctab-dot"></span> Club Charter
+      </button>
+      <button class="ctab other-tab" onclick="setClient('other', this)">
+        <span class="ctab-dot"></span> Other Projects
+      </button>
+    </div>
+  </div>
 </div>
 
+<!-- MAIN -->
+<div class="main-area">
 <div class="container">
 
-  <!-- Project name field (Other tab only) -->
+  <!-- Project name (Other tab) -->
   <div class="project-name-row" id="project-name-row">
     <label class="field-label">Project Name</label>
-    <input type="text" id="project-name" placeholder="e.g. Asahi Campaign, World Wrap Podcast…">
+    <input type="text" id="project-name" placeholder="e.g. Asahi Campaign, World Wrap Podcast, TRVLS…">
   </div>
 
-  <div class="brief-panel">
-    <label class="field-label">Title <span style="color:#ef4444;">*</span></label>
-    <input class="title-input" id="job-title" placeholder="e.g. Charter — After-Hours Gap Reels, WiBiz LinkedIn Campaign Q2…" required>
+  <!-- Brief panel -->
+  <div class="brief-panel" id="brief-panel">
+    <label class="field-label">Title <span style="color:#ef4444;font-weight:700;">*</span></label>
+    <input class="title-input" id="job-title"
+      placeholder="e.g. Charter — After-Hours Gap Reels, WiBiz LinkedIn Q2 Campaign…" required>
+
+    <div class="brief-divider"></div>
 
     <label class="field-label">Brief</label>
-    <textarea id="brief" placeholder="Include: deliverable type · audience · angle · any specific requirements. Be specific — Marcus will route to the right agents automatically."></textarea>
+    <textarea id="brief"
+      placeholder="Include: deliverable type · audience · angle · any specific requirements. Marcus reads this and routes to the right agents."></textarea>
+
     <div class="brief-footer">
-      <span class="hint">Submit → Marcus routes to agents → outputs appear below. Enter to submit.</span>
-      <div style="display:flex;align-items:center;gap:12px;">
-        <span style="font-size:12px;color:#94a3b8;" id="char-count"></span>
-        <button class="btn-submit" id="submit-btn" onclick="submitBrief()">Submit Brief</button>
+      <span class="hint">
+        <strong>Enter</strong> to submit &nbsp;·&nbsp; Marcus routes automatically &nbsp;·&nbsp; outputs appear below
+      </span>
+      <div class="submit-row">
+        <span class="char-count" id="char-count"></span>
+        <button class="btn-submit" id="submit-btn" onclick="submitBrief()">Submit Brief →</button>
       </div>
     </div>
   </div>
 
+  <!-- Save notice -->
   <div class="save-notice" id="save-notice">
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M13.3 4.3L6 11.6 2.7 8.3" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    <span id="save-notice-text">Output saved.</span>
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+      <path d="M13.3 4.3L6 11.6 2.7 8.3" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <span id="save-notice-text">Saved to your account.</span>
   </div>
 
+  <!-- Status bar -->
   <div class="status-bar" id="status-bar">
     <div class="spinner"></div>
     <div>
@@ -234,9 +495,9 @@
     </div>
   </div>
 
+  <!-- Output area -->
   <div class="output-area" id="output-area">
 
-    <!-- Marcus analysis -->
     <div class="card" id="analysis-card" style="display:none;">
       <div class="card-head">
         <div class="agent-label">
@@ -268,7 +529,6 @@
       <div class="md" id="review-content"></div>
     </div>
 
-    <!-- Cascade -->
     <div id="cascade-divider" style="display:none;" class="stage-divider"><span>Cascade — Stage 2</span></div>
     <div id="cascade-area"></div>
 
@@ -286,17 +546,17 @@
       <div class="md" id="cascade-review-content"></div>
     </div>
 
-    <!-- Assembly -->
     <div id="assembly-divider" style="display:none;" class="stage-divider"><span>Final Assembly</span></div>
     <div id="assembly-card" class="assembly-card" style="display:none;">
       <div class="card-head">
         <span class="assembly-badge" id="bundle-badge">Files Ready</span>
-        <span style="font-size:12px;color:#64748b;">All outputs saved to your account</span>
+        <span style="font-size:12px;color:#64748b;">Saved to your account · view in Outputs</span>
       </div>
       <div id="bundle-files" class="bundle-files"></div>
     </div>
 
   </div>
+</div>
 </div>
 
 <script>
@@ -319,9 +579,16 @@ const AGENT_ROLES = {
 
 const CLIENT_PLACEHOLDERS = {
   'wibiz':     'e.g. LinkedIn post series for the restaurant vertical launch. Audience: SMB owners. Lead with the after-hours gap.',
-  'ai-living': 'e.g. Committee approval summary one-pager for The Meridian. Audience: MC members. Emphasise no-app-download differentiator.',
-  'charter':   'e.g. 5-post Instagram series for Club Charter launch. Use SRC proof numbers. Audience: club GMs.',
+  'ai-living': 'e.g. Committee approval summary one-pager for The Meridian. Audience: MC members. Emphasise the no-app-download differentiator.',
+  'charter':   'e.g. 5-post Instagram series for Club Charter launch. Use SRC proof numbers. Audience: club GMs and membership directors.',
   'other':     'e.g. Campaign brief, research request, or any other creative work. Be as specific as possible.',
+};
+
+const CLIENT_ACCENTS = {
+  'wibiz':     'linear-gradient(90deg, #16a34a, #15803d)',
+  'ai-living': 'linear-gradient(90deg, #2563eb, #3b82f6)',
+  'charter':   'linear-gradient(90deg, #ca8a04, #a16207)',
+  'other':     'linear-gradient(90deg, #475569, #64748b)',
 };
 
 // ── Client tab switching ──────────────────────────────────────────
@@ -332,7 +599,11 @@ function setClient(client, btn) {
   const pnRow = document.getElementById('project-name-row');
   pnRow.classList.toggle('visible', client === 'other');
   document.getElementById('brief').placeholder = CLIENT_PLACEHOLDERS[client] || CLIENT_PLACEHOLDERS['other'];
+  document.getElementById('brief-panel').style.setProperty('--accent-bar', CLIENT_ACCENTS[client] || CLIENT_ACCENTS['other']);
 }
+
+// Init accent bar
+document.getElementById('brief-panel').style.setProperty('--accent-bar', CLIENT_ACCENTS['wibiz']);
 
 // ── Markdown renderer ─────────────────────────────────────────────
 function md(raw) {
@@ -353,9 +624,8 @@ function md(raw) {
     const [h,...b] = rows;
     return `<table><thead>${row(h,'th')}</thead><tbody>${b.map(r=>row(r,'td')).join('')}</tbody></table>`;
   });
-  t = t.replace(/(^[-•] .+$\n?)+/gm, block => {
-    return '<ul>' + block.trim().split('\n').map(l=>`<li>${l.replace(/^[-•] /,'')}</li>`).join('') + '</ul>';
-  });
+  t = t.replace(/(^[-•] .+$\n?)+/gm, block =>
+    '<ul>' + block.trim().split('\n').map(l=>`<li>${l.replace(/^[-•] /,'')}</li>`).join('') + '</ul>');
   return t.split(/\n\n+/).map(chunk => {
     chunk = chunk.trim();
     if (!chunk) return '';
@@ -364,7 +634,7 @@ function md(raw) {
   }).join('');
 }
 
-// ── Agent chip ────────────────────────────────────────────────────
+// ── Chips ─────────────────────────────────────────────────────────
 function setChip(name, status) {
   if (!chips[name]) {
     const el = document.createElement('span');
@@ -386,7 +656,6 @@ function copyCard(cid, bid) {
   });
 }
 
-// ── Exports ───────────────────────────────────────────────────────
 function downloadMd(agent) { if (currentJobId) window.location = `/api/export/${currentJobId}/${agent}.md`; }
 function openPrint(agent)  { if (currentJobId) window.open(`/api/export/${currentJobId}/${agent}/print`, '_blank'); }
 
@@ -434,60 +703,39 @@ function addFlagCard(flag, message) {
   area.appendChild(card);
 }
 
-// ── SSE event handler ─────────────────────────────────────────────
+// ── SSE handler ───────────────────────────────────────────────────
 function handleEvent(e) {
   const ev = JSON.parse(e.data);
   switch (ev.type) {
-
     case 'status':
-      document.getElementById('status-text').textContent = ev.message;
-      break;
-
+      document.getElementById('status-text').textContent = ev.message; break;
     case 'agents_identified':
-      ev.agents.forEach(a => setChip(a, 'running'));
-      break;
-
+      ev.agents.forEach(a => setChip(a, 'running')); break;
     case 'marcus_analysis':
       document.getElementById('analysis-content').innerHTML = md(ev.content);
-      document.getElementById('analysis-card').style.display = 'block';
-      break;
-
+      document.getElementById('analysis-card').style.display = 'block'; break;
     case 'specialist':
-      addAgentCard(ev.agent, ev.content, 'stage1-area');
-      break;
-
+      addAgentCard(ev.agent, ev.content, 'stage1-area'); break;
     case 'review':
       document.getElementById('review-content').innerHTML = md(ev.content);
-      document.getElementById('review-card').style.display = 'block';
-      break;
-
+      document.getElementById('review-card').style.display = 'block'; break;
     case 'cascade_start':
       document.getElementById('cascade-divider').style.display = 'flex';
-      ev.agents.forEach(a => setChip(a, 'cascade'));
-      break;
-
+      ev.agents.forEach(a => setChip(a, 'cascade')); break;
     case 'cascade_output':
-      addAgentCard(ev.agent, ev.content, 'cascade-area');
-      break;
-
+      addAgentCard(ev.agent, ev.content, 'cascade-area'); break;
     case 'cascade_review':
       document.getElementById('cascade-review-content').innerHTML = md(ev.content);
-      document.getElementById('cascade-review-card').style.display = 'block';
-      break;
-
+      document.getElementById('cascade-review-card').style.display = 'block'; break;
     case 'third_party_flag':
-      addFlagCard(ev.flag, ev.message);
-      break;
-
+      addFlagCard(ev.flag, ev.message); break;
     case 'assembly_start':
       document.getElementById('assembly-divider').style.display = 'flex';
-      document.getElementById('status-text').textContent = 'Assembling output files...';
-      break;
-
+      document.getElementById('status-text').textContent = 'Assembling output files...'; break;
     case 'assembly_bundle_done': {
       const container = document.getElementById('bundle-files');
       container.innerHTML = '';
-      const fileOrder = ['html_website', 'html_onepager', 'canva_json', 'social_pack_cascade', 'video_brief'];
+      const fileOrder = ['html_website','html_onepager','canva_json','social_pack_cascade','video_brief'];
       const fileLabels = {
         html_website:        'HTML Website',
         html_onepager:       'A4 One-Pager (PDF-ready)',
@@ -500,31 +748,27 @@ function handleEvent(e) {
         const fname = ev.files[key];
         if (!fname) continue;
         fileCount++;
-        const label = fileLabels[key] || key;
         const isHtml = fname.endsWith('.html');
         const isJson = fname.endsWith('.json');
-        const viewBtn = isHtml
-          ? `<a class="view-btn" href="/outputs/view/${fname}" target="_blank">Open →</a>`
-          : '';
+        const viewBtn = isHtml ? `<a class="view-btn" href="/outputs/view/${fname}" target="_blank">Open →</a>` : '';
         const row = document.createElement('div');
         row.className = 'bundle-file';
         row.innerHTML = `
           <div>
-            <div class="bundle-label">${label}</div>
+            <div class="bundle-label">${fileLabels[key] || key}</div>
             <div class="bundle-filename">${fname}</div>
           </div>
           <div class="bundle-actions">
             ${viewBtn}
-            <a class="dl-btn${isJson ? ' json' : ''}" href="/outputs/download/${fname}">⬇ ${isHtml?'HTML':isJson?'JSON':'MD'}</a>
+            <a class="dl-btn${isJson?' json':''}" href="/outputs/download/${fname}">⬇ ${isHtml?'HTML':isJson?'JSON':'MD'}</a>
           </div>`;
         container.appendChild(row);
       }
       const badge = document.getElementById('bundle-badge');
-      if (badge) badge.textContent = fileCount + ' Files Ready — Saved to your account';
+      if (badge) badge.textContent = fileCount + ' Files Ready';
       document.getElementById('assembly-card').style.display = 'block';
       break;
     }
-
     case 'assembly_done': {
       const row = document.createElement('div');
       row.className = 'bundle-file';
@@ -540,16 +784,14 @@ function handleEvent(e) {
       document.getElementById('assembly-card').style.display = 'block';
       break;
     }
-
     case 'done':
       currentJobId = ev.job_id;
       document.getElementById('status-bar').classList.remove('visible');
       document.getElementById('submit-btn').disabled = false;
       document.getElementById('save-notice-text').textContent =
-        `Saved to your account. View in Outputs → ${activeClient === 'other' ? 'Other Projects' : activeClient.charAt(0).toUpperCase() + activeClient.slice(1)}.`;
+        `Saved · view in Outputs under ${activeClient === 'other' ? (document.getElementById('project-name').value || 'Other Projects') : activeClient === 'ai-living' ? 'AI Living' : activeClient.charAt(0).toUpperCase() + activeClient.slice(1)}.`;
       document.getElementById('save-notice').classList.add('visible');
       break;
-
     case 'error':
       document.getElementById('status-text').textContent = 'Error: ' + ev.message;
       document.getElementById('submit-btn').disabled = false;
@@ -559,14 +801,15 @@ function handleEvent(e) {
 
 // ── Submit ────────────────────────────────────────────────────────
 async function submitBrief() {
-  const title = document.getElementById('job-title').value.trim();
-  const brief = document.getElementById('brief').value.trim();
+  const title       = document.getElementById('job-title').value.trim();
+  const brief       = document.getElementById('brief').value.trim();
   const projectName = document.getElementById('project-name').value.trim();
 
   if (!title) {
-    document.getElementById('job-title').focus();
-    document.getElementById('job-title').style.borderColor = '#ef4444';
-    setTimeout(() => { document.getElementById('job-title').style.borderColor = ''; }, 2000);
+    const inp = document.getElementById('job-title');
+    inp.focus(); inp.style.borderColor = '#ef4444';
+    inp.style.boxShadow = '0 0 0 3px rgba(239,68,68,0.12)';
+    setTimeout(() => { inp.style.borderColor = ''; inp.style.boxShadow = ''; }, 2500);
     return;
   }
   if (!brief) return;
@@ -575,18 +818,14 @@ async function submitBrief() {
   btn.disabled = true;
   currentJobId = null;
 
-  ['analysis-card','review-card','cascade-review-card','assembly-card'].forEach(id => {
-    document.getElementById(id).style.display = 'none';
-  });
-  ['cascade-divider','assembly-divider'].forEach(id => {
-    document.getElementById(id).style.display = 'none';
-  });
-  ['stage1-area','cascade-area'].forEach(id => {
-    document.getElementById(id).innerHTML = '';
-  });
-  ['analysis-content','review-content','cascade-review-content'].forEach(id => {
-    document.getElementById(id).innerHTML = '';
-  });
+  ['analysis-card','review-card','cascade-review-card','assembly-card'].forEach(id =>
+    document.getElementById(id).style.display = 'none');
+  ['cascade-divider','assembly-divider'].forEach(id =>
+    document.getElementById(id).style.display = 'none');
+  ['stage1-area','cascade-area'].forEach(id =>
+    document.getElementById(id).innerHTML = '');
+  ['analysis-content','review-content','cascade-review-content'].forEach(id =>
+    document.getElementById(id).innerHTML = '');
   document.getElementById('agent-chips').innerHTML = '';
   document.getElementById('save-notice').classList.remove('visible');
   Object.keys(chips).forEach(k => delete chips[k]);
@@ -599,14 +838,9 @@ async function submitBrief() {
     const resp = await fetch('/api/brief', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        brief,
-        title,
-        client: activeClient,
-        project_name: projectName,
-      })
+      body: JSON.stringify({ brief, title, client: activeClient, project_name: projectName })
     });
-    const {job_id, error} = await resp.json();
+    const { job_id, error } = await resp.json();
     if (error) throw new Error(error);
 
     const src = new EventSource(`/api/stream/${job_id}`);

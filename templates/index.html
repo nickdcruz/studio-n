@@ -429,6 +429,121 @@
     .md th, .md td { border: 1px solid #e2e8f0; padding: 8px 12px; text-align: left; }
     .md th { background: #f8fafc; font-weight: 600; }
     .md blockquote { border-left: 3px solid #e2e8f0; padding-left: 14px; color: #64748b; font-style: italic; margin: 12px 0; }
+
+    /* ── DARK MODE TOGGLE BUTTON ──────────────────────────────── */
+    .dm-toggle {
+      width: 34px; height: 34px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.06); cursor: pointer; display: flex;
+      align-items: center; justify-content: center; transition: all 0.15s;
+      color: #94a3b8; flex-shrink: 0;
+    }
+    .dm-toggle:hover { background: rgba(255,255,255,0.12); color: white; }
+
+    /* ── DARK MODE ────────────────────────────────────────────── */
+    body.dark { background: #0b1120; color: #cbd5e1; }
+    body.dark .main-area { background: #0b1120; }
+
+    /* panels & cards */
+    body.dark .brief-panel {
+      background: #141e2e; border-color: rgba(255,255,255,0.07);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.2);
+    }
+    body.dark .card {
+      background: #141e2e; border-color: rgba(255,255,255,0.06);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    body.dark .status-bar { background: #141e2e; }
+    body.dark .assembly-card { background: #141e2e; border-color: #334155; }
+    body.dark .bundle-file { background: #0b1120; border-color: rgba(255,255,255,0.06); }
+    body.dark .save-notice { background: #052e16; border-color: #166534; color: #86efac; }
+    body.dark .flag-card { background: #1c1000; border-color: #78350f; }
+    body.dark .flag-title { color: #fbbf24; }
+    body.dark .flag-msg { color: #fcd34d; }
+
+    /* inputs */
+    body.dark .title-input {
+      background: #0f172a; border-color: #1e293b; color: #e2e8f0;
+    }
+    body.dark .title-input:focus {
+      border-color: #475569; background: #0f172a;
+      box-shadow: 0 0 0 3px rgba(71,85,105,0.2);
+    }
+    body.dark .title-input::placeholder { color: #475569; }
+    body.dark textarea {
+      background: #0f172a; border-color: #1e293b; color: #cbd5e1;
+    }
+    body.dark textarea:focus {
+      border-color: #475569; background: #0f172a;
+      box-shadow: 0 0 0 3px rgba(71,85,105,0.2);
+    }
+    body.dark .project-name-row input {
+      background: #0f172a; border-color: #1e293b; color: #e2e8f0;
+      box-shadow: none;
+    }
+    body.dark .project-name-row input:focus { border-color: #475569; }
+
+    /* dividers & labels */
+    body.dark .brief-divider { background: #1e293b; }
+    body.dark .field-label { color: #475569; }
+    body.dark .context-label { color: #475569; }
+    body.dark .card-head { border-bottom-color: #1e293b; }
+    body.dark .stage-divider::before,
+    body.dark .stage-divider::after { background: #1e293b; }
+    body.dark .stage-divider span { color: #475569; }
+
+    /* agent names & roles */
+    body.dark .agent-name { color: #e2e8f0; }
+    body.dark .agent-role { color: #475569; }
+    body.dark .bundle-label { color: #e2e8f0; }
+    body.dark .bundle-filename { color: #475569; }
+
+    /* badges */
+    body.dark .badge-marcus { background: #0f172a; color: #94a3b8; }
+    body.dark .chip-waiting { background: #1e293b; color: #475569; }
+
+    /* buttons */
+    body.dark .btn-submit { background: #1e293b; box-shadow: none; }
+    body.dark .btn-submit:hover:not(:disabled) { background: #334155; }
+    body.dark .btn-submit:disabled { background: #1e293b; color: #475569; }
+    body.dark .dl-btn { border-color: #1e293b; color: #64748b; }
+    body.dark .dl-btn:hover { background: #1e293b; color: #94a3b8; }
+    body.dark .action-btn { border-color: #1e293b; color: #64748b; }
+    body.dark .action-btn:hover { background: #1e293b; color: #94a3b8; }
+
+    /* upload zone */
+    body.dark .upload-zone { background: #0f172a; border-color: #1e293b; }
+    body.dark .upload-zone:hover,
+    body.dark .upload-zone.dragover { background: #141e2e; border-color: #334155; }
+    body.dark .upload-zone-icon { background: #1e293b; }
+    body.dark .upload-zone-label { color: #64748b; }
+    body.dark .file-chip { background: #1e293b; color: #64748b; }
+
+    /* hint text */
+    body.dark .hint { color: #334155; }
+    body.dark .hint strong { color: #475569; }
+    body.dark .char-count { color: #1e293b; }
+
+    /* markdown */
+    body.dark .md { color: #94a3b8; }
+    body.dark .md h1, body.dark .md h2, body.dark .md h3 { color: #e2e8f0; }
+    body.dark .md strong { color: #cbd5e1; }
+    body.dark .md hr { border-top-color: #1e293b; }
+    body.dark .md th { background: #0f172a; }
+    body.dark .md th, body.dark .md td { border-color: #1e293b; }
+    body.dark .md blockquote { border-left-color: #334155; color: #475569; }
+
+    /* context badges (keep their colour, just soften bg) */
+    body.dark .ctx-wibiz   { background: #052e16; color: #4ade80; }
+    body.dark .ctx-ai      { background: #0c1a3a; color: #60a5fa; }
+    body.dark .ctx-charter { background: #1c1400; color: #fbbf24; }
+    body.dark .ctx-other   { background: #0f172a; color: #64748b; border-color: #1e293b; }
+
+    /* active tab in dark (tabs are inside the always-dark hero — no change needed) */
+    body.dark .ctab.active { background: #0b1120; color: #94a3b8; }
+    body.dark .ctab.active.wibiz   { background: #052e16; color: #4ade80; }
+    body.dark .ctab.active.ai      { background: #0c1a3a; color: #60a5fa; }
+    body.dark .ctab.active.charter { background: #1c1400; color: #fbbf24; }
+    body.dark .ctab.active.other-tab { background: #0f172a; color: #64748b; }
   </style>
 </head>
 <body>
@@ -447,6 +562,18 @@
   </div>
   <div class="nav-right">
     <a href="/outputs" class="nav-link">Outputs</a>
+    <button class="dm-toggle" id="dm-toggle" onclick="toggleDark()" title="Toggle dark mode" aria-label="Toggle dark mode">
+      <svg id="dm-icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+      </svg>
+      <svg id="dm-icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+        <circle cx="12" cy="12" r="5"/>
+        <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+        <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+      </svg>
+    </button>
     <a href="/logout" class="nav-link" style="color:#475569;">Sign out</a>
   </div>
 </nav>
@@ -850,6 +977,28 @@ function handleEvent(e) {
       break;
   }
 }
+
+// ── Dark mode ─────────────────────────────────────────────────────
+(function() {
+  if (localStorage.getItem('dm') === '1') {
+    document.body.classList.add('dark');
+  }
+})();
+
+function toggleDark() {
+  const isDark = document.body.classList.toggle('dark');
+  localStorage.setItem('dm', isDark ? '1' : '0');
+  document.getElementById('dm-icon-moon').style.display = isDark ? 'none' : '';
+  document.getElementById('dm-icon-sun').style.display  = isDark ? '' : 'none';
+}
+
+// Apply correct icon on load
+(function() {
+  if (localStorage.getItem('dm') === '1') {
+    document.getElementById('dm-icon-moon').style.display = 'none';
+    document.getElementById('dm-icon-sun').style.display  = '';
+  }
+})();
 
 // ── File upload ───────────────────────────────────────────────────
 let selectedFiles = [];

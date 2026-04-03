@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import secrets
+import sqlite3
 import traceback
 import uuid
 from datetime import datetime
@@ -35,6 +36,108 @@ logging.basicConfig(
 BASE_DIR    = Path(__file__).parent
 OUTPUTS_DIR = BASE_DIR / "outputs"
 OUTPUTS_DIR.mkdir(exist_ok=True)
+
+# ── Persistent storage (SQLite) ───────────────────────────────────
+# Set DATA_DIR=/data in Railway env vars + mount a Railway Volume at /data.
+# Without a volume, data persists in ./data (lost on redeploy — set the volume).
+DATA_DIR = Path(os.getenv("DATA_DIR", BASE_DIR / "data"))
+DATA_DIR.mkdir(exist_ok=True)
+DB_PATH = DATA_DIR / "studio_n.db"
+
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS jobs (
+            id              TEXT PRIMARY KEY,
+            title           TEXT NOT NULL DEFAULT '',
+            client          TEXT NOT NULL DEFAULT 'other',
+            project_name    TEXT DEFAULT '',
+            brief           TEXT NOT NULL DEFAULT '',
+            timestamp       TEXT NOT NULL,
+            marcus_analysis TEXT DEFAULT '',
+            stage1_outputs  TEXT DEFAULT '{}',
+            marcus_review   TEXT DEFAULT '',
+            cascade_outputs TEXT DEFAULT '{}',
+            marcus_cascade_review TEXT DEFAULT '',
+            assembled_files TEXT DEFAULT '{}',
+            assembled_content TEXT DEFAULT '{}',
+            status          TEXT DEFAULT 'complete',
+            created_at      TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.commit()
+    conn.close()
+    logging.info("DB ready at %s", DB_PATH)
+
+def db_save_job(job_id: str, job: dict, assembled_content: dict = None):
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
+        INSERT OR REPLACE INTO jobs
+        (id, title, client, project_name, brief, timestamp,
+         marcus_analysis, stage1_outputs, marcus_review,
+         cascade_outputs, marcus_cascade_review,
+         assembled_files, assembled_content, status)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    """, (
+        job_id,
+        job.get("title", "Untitled"),
+        job.get("client", "other"),
+        job.get("project_name", ""),
+        job.get("brief", ""),
+        job["timestamp"].isoformat() if hasattr(job.get("timestamp"), "isoformat") else str(job.get("timestamp", "")),
+        job.get("marcus_analysis", ""),
+        json.dumps(job.get("stage1_outputs") or {}),
+        job.get("marcus_review", "") or "",
+        json.dumps(job.get("cascade_outputs") or {}),
+        job.get("marcus_cascade_review", "") or "",
+        json.dumps(job.get("assembled_files") or {}),
+        json.dumps(assembled_content or {}),
+        "complete",
+    ))
+    conn.commit()
+    conn.close()
+
+def db_load_all_jobs() -> list[dict]:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM jobs ORDER BY created_at DESC").fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        job = dict(r)
+        for k in ("stage1_outputs", "cascade_outputs", "assembled_files", "assembled_content"):
+            try:
+                job[k] = json.loads(job.get(k) or "{}")
+            except Exception:
+                job[k] = {}
+        result.append(job)
+    return result
+
+def db_recover_missing_files():
+    """Recreate output files from DB if they are missing (e.g. after redeploy)."""
+    try:
+        jobs = db_load_all_jobs()
+    except Exception as e:
+        logging.error("DB recovery failed: %s", e)
+        return
+    recovered = 0
+    for job in jobs:
+        for key, content in (job.get("assembled_content") or {}).items():
+            fname = (job.get("assembled_files") or {}).get(key)
+            if not fname or not content:
+                continue
+            path = OUTPUTS_DIR / fname
+            if not path.exists():
+                try:
+                    path.write_text(content, encoding="utf-8")
+                    recovered += 1
+                except Exception as e:
+                    logging.error("Recovery failed for %s: %s", fname, e)
+    if recovered:
+        logging.info("Recovered %d output files from DB", recovered)
+
+init_db()
+db_recover_missing_files()
 
 app = FastAPI(title="Studio N")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
@@ -852,9 +955,14 @@ def _slug(text: str, n: int = 35) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text[:n].lower()).strip("-")
 
 def save_markdown(job: dict) -> Path:
-    ts   = job["timestamp"]
-    path = OUTPUTS_DIR / f"{ts.strftime('%Y-%m-%d_%H-%M')}_{_slug(job['brief'])}.md"
+    ts    = job["timestamp"]
+    title = job.get("title") or job["brief"]
+    path  = OUTPUTS_DIR / f"{ts.strftime('%Y-%m-%d_%H-%M')}_{_slug(title)}.md"
+    client_label = {"wibiz": "WiBiz", "ai-living": "AI Living", "charter": "Club Charter"}.get(
+        job.get("client", "other"), job.get("project_name") or "Other")
     lines = ["# Studio N — Job Output", "",
+             f"**Title:** {title}", "",
+             f"**Client:** {client_label}", "",
              f"**Date:** {ts.strftime('%Y-%m-%d %H:%M')}", "",
              f"**Brief:** {job['brief']}", "", "---", ""]
     if job.get("marcus_analysis"):
@@ -937,7 +1045,6 @@ def _nav(active: str) -> str:
       <a href="/" class="nav-brand">Studio N<span>by Marcus</span></a>
       <div class="nav-links">
         {lnk('/','Brief','brief')}
-        {lnk('/studio','Studio','studio')}
         {lnk('/outputs','Outputs','outputs')}
       </div>
     </nav>"""
@@ -987,13 +1094,20 @@ async def extract_agents_from_analysis(analysis: str, brief: str) -> list[str]:
 
 # ── Job processor ─────────────────────────────────────────────────
 
-async def process_job(job_id: str, brief: str) -> None:
+async def process_job(job_id: str, brief: str, title: str = "",
+                      client: str = "other", project_name: str = "") -> None:
     q = _jobs[job_id]
 
     async def emit(ev: dict) -> None:
         await q.put(ev)
 
-    job: dict = {"brief": brief, "timestamp": datetime.now()}
+    job: dict = {
+        "brief": brief,
+        "timestamp": datetime.now(),
+        "title": title or brief[:60],
+        "client": client,
+        "project_name": project_name,
+    }
 
     try:
         await emit({"type": "status", "message": "Marcus is reading your brief..."})
@@ -1156,6 +1270,7 @@ async def process_job(job_id: str, brief: str) -> None:
         # Assembly — generate and save each file sequentially so one failure
         # never blocks the others. Each step logs on error but continues.
         all_outputs = {**stage1_outputs, **cascade_outputs}
+        assembled_content_for_db: dict[str, str] = {}
 
         logging.info(
             "job %s — all_outputs before assembly: keys=%s stage1=%s cascade=%s total_chars=%d",
@@ -1180,6 +1295,7 @@ async def process_job(job_id: str, brief: str) -> None:
                     "You generate complete, production-ready B2B HTML websites with Google Fonts. Output only valid HTML.")
                 website_path = save_assembled(job, "html_website", website_content)
                 bundle["html_website"] = website_path.name
+                assembled_content_for_db["html_website"] = website_content
                 logging.info("Assembly saved: %s", website_path)
             except Exception as e:
                 logging.error("Assembly html_website failed: %s\n%s", e, traceback.format_exc())
@@ -1192,6 +1308,7 @@ async def process_job(job_id: str, brief: str) -> None:
                     "You generate complete, print-ready A4 HTML one-pagers with Google Fonts. Output only valid HTML.")
                 onepager_path = save_assembled(job, "html_onepager", onepager_content)
                 bundle["html_onepager"] = onepager_path.name
+                assembled_content_for_db["html_onepager"] = onepager_content
                 logging.info("Assembly saved: %s", onepager_path)
             except Exception as e:
                 logging.error("Assembly html_onepager failed: %s\n%s", e, traceback.format_exc())
@@ -1202,6 +1319,7 @@ async def process_job(job_id: str, brief: str) -> None:
                 canva_json_str = await assemble_canva_json(all_outputs, brief)
                 canva_path = save_assembled(job, "canva_json", canva_json_str)
                 bundle["canva_json"] = canva_path.name
+                assembled_content_for_db["canva_json"] = canva_json_str
                 logging.info("Assembly saved: %s", canva_path)
             except Exception as e:
                 logging.error("Assembly canva_json failed: %s\n%s", e, traceback.format_exc())
@@ -1212,8 +1330,8 @@ async def process_job(job_id: str, brief: str) -> None:
                 social_cascade_content = await assemble_social_cascade(all_outputs, brief)
                 social_cascade_path = save_assembled(job, "social_pack_cascade", social_cascade_content)
                 bundle["social_pack_cascade"] = social_cascade_path.name
+                assembled_content_for_db["social_pack_cascade"] = social_cascade_content
                 logging.info("Assembly saved: %s", social_cascade_path)
-                # Post LinkedIn post to Buffer publishing queue
                 await post_to_buffer(social_cascade_content)
             except Exception as e:
                 logging.error("Assembly social_pack_cascade failed: %s\n%s", e, traceback.format_exc())
@@ -1224,6 +1342,7 @@ async def process_job(job_id: str, brief: str) -> None:
                 video_brief_content = await assemble_video_brief(all_outputs, brief)
                 video_brief_path = save_assembled(job, "video_brief", video_brief_content)
                 bundle["video_brief"] = video_brief_path.name
+                assembled_content_for_db["video_brief"] = video_brief_content
                 logging.info("Assembly saved: %s", video_brief_path)
             except Exception as e:
                 logging.error("Assembly video_brief failed: %s\n%s", e, traceback.format_exc())
@@ -1255,7 +1374,9 @@ async def process_job(job_id: str, brief: str) -> None:
                 except Exception as e:
                     logging.error("Assembly social_pack failed: %s", e)
 
+        job["assembled_files"] = bundle if all_outputs else {}
         md_path = save_markdown(job)
+        db_save_job(job_id, job, assembled_content_for_db)
         _completed[job_id] = job
         await emit({"type": "done", "job_id": job_id, "saved_as": md_path.name})
 
@@ -1297,13 +1418,18 @@ async def index(request: Request):
 
 @app.post("/api/brief")
 async def start_brief(request: Request):
-    data  = await request.json()
-    brief = data.get("brief", "").strip()
+    data         = await request.json()
+    brief        = data.get("brief", "").strip()
+    title        = data.get("title", "").strip()
+    client       = data.get("client", "other").strip()
+    project_name = data.get("project_name", "").strip()
     if not brief:
         return JSONResponse({"error": "Brief is empty"}, status_code=400)
+    if not title:
+        return JSONResponse({"error": "Title is required"}, status_code=400)
     job_id = str(uuid.uuid4())
     _jobs[job_id] = asyncio.Queue()
-    asyncio.create_task(process_job(job_id, brief))
+    asyncio.create_task(process_job(job_id, brief, title=title, client=client, project_name=project_name))
     return {"job_id": job_id}
 
 @app.get("/api/stream/{job_id}")
@@ -1366,9 +1492,13 @@ async def print_export(job_id: str, agent: str):
         title, md_body = f"{agent.capitalize()} — Output", all_out.get(agent,"")
     return HTMLResponse(_print_page(title, job["brief"], ts, _md_to_html(md_body)))
 
-# ── Studio page ───────────────────────────────────────────────────
+# ── Studio page — redirect to /outputs ───────────────────────────
 
-@app.get("/studio", response_class=HTMLResponse)
+@app.get("/studio")
+async def studio_redirect():
+    return RedirectResponse("/outputs", status_code=302)
+
+@app.get("/studio_old", response_class=HTMLResponse)
 async def studio_page():
     html_files = sorted(OUTPUTS_DIR.glob("*.html"),
                         key=lambda f: f.stat().st_mtime, reverse=True)
@@ -1456,7 +1586,169 @@ async def studio_page():
   {cards_html}
 </div></body></html>""")
 
-# ── Outputs page ──────────────────────────────────────────────────
+# ── Outputs page (DB-backed) ──────────────────────────────────────
+
+CLIENT_META = {
+    "wibiz":     {"label": "WiBiz",       "bg": "#dcfce7", "fg": "#15803d"},
+    "ai-living": {"label": "AI Living",   "bg": "#dbeafe", "fg": "#1d4ed8"},
+    "charter":   {"label": "Club Charter","bg": "#fef9c3", "fg": "#a16207"},
+    "other":     {"label": "Other",       "bg": "#f1f5f9", "fg": "#475569"},
+}
+
+FILE_META = {
+    "html_website":        {"label": "Website",      "bg": "#dbeafe", "fg": "#1d4ed8"},
+    "html_onepager":       {"label": "One-Pager",    "bg": "#d1fae5", "fg": "#065f46"},
+    "canva_json":          {"label": "Canva JSON",   "bg": "#ede9fe", "fg": "#6d28d9"},
+    "social_pack_cascade": {"label": "Social Pack",  "bg": "#fef3c7", "fg": "#92400e"},
+    "video_brief":         {"label": "Video Brief",  "bg": "#fee2e2", "fg": "#b91c1c"},
+    "social_pack":         {"label": "Social Pack",  "bg": "#fef3c7", "fg": "#92400e"},
+}
+
+AGENT_ROLES = {
+    "marcus": "Director of Marketing",
+    "reeva":  "Brand & Identity",
+    "callum": "LinkedIn & Long-Form",
+    "priya":  "Social & Short-Form",
+    "dante":  "Video & Reels",
+    "suki":   "Static & Visual",
+    "felix":  "Decks & Presentations",
+    "nadia":  "Web & Copy",
+    "zara":   "Research & Intelligence",
+}
+
+@app.get("/outputs", response_class=HTMLResponse)
+async def outputs_page(request: Request):
+    # Ensure any files from DB that are missing on disk are recreated
+    db_recover_missing_files()
+
+    active_client = request.query_params.get("client", "all")
+    all_jobs = db_load_all_jobs()
+
+    # Also pull in any legacy .md files not in DB (backward compat)
+    db_ids = {j["id"] for j in all_jobs}
+
+    if active_client != "all":
+        jobs = [j for j in all_jobs if j.get("client") == active_client]
+    else:
+        jobs = all_jobs
+
+    # ── Tab bar ──────────────────────────────────────────────────
+    tabs_html = ""
+    tab_defs = [
+        ("all",       "All",          "#1e293b", "white"),
+        ("wibiz",     "WiBiz",        "#dcfce7", "#15803d"),
+        ("ai-living", "AI Living",    "#dbeafe", "#1d4ed8"),
+        ("charter",   "Club Charter", "#fef9c3", "#a16207"),
+        ("other",     "Other",        "#f1f5f9", "#475569"),
+    ]
+    for key, label, bg, fg in tab_defs:
+        count = len([j for j in all_jobs if key == "all" or j.get("client") == key])
+        is_active = key == active_client
+        style = (f"background:{bg};color:{fg};border:2px solid {fg}40;"
+                 if not is_active else
+                 f"background:#1e293b;color:white;border:2px solid #1e293b;")
+        tabs_html += (
+            f'<a href="/outputs?client={key}" style="{style}'
+            f'font-size:12px;font-weight:700;padding:6px 14px;border-radius:6px;'
+            f'text-decoration:none;white-space:nowrap;">'
+            f'{label} <span style="font-size:10px;opacity:0.7;">({count})</span></a> '
+        )
+
+    # ── Job cards ────────────────────────────────────────────────
+    if not jobs:
+        body = """<div style="text-align:center;padding:80px 0;color:#94a3b8;">
+          <div style="font-size:32px;margin-bottom:12px;">📂</div>
+          <div style="font-size:15px;font-weight:600;color:#475569;">No jobs yet for this client</div>
+          <div style="font-size:13px;margin-top:6px;">Submit a brief on the <a href="/" style="color:#1e293b;">Brief page</a>.</div>
+        </div>"""
+    else:
+        body = ""
+        for job in jobs:
+            jid    = job["id"]
+            title  = job.get("title") or job.get("brief", "")[:60]
+            client = job.get("client", "other")
+            pname  = job.get("project_name", "")
+            brief  = job.get("brief", "")
+            ts     = job.get("timestamp", job.get("created_at", ""))[:16].replace("T", " ")
+            cm     = CLIENT_META.get(client, CLIENT_META["other"])
+            client_label = pname if (client == "other" and pname) else cm["label"]
+
+            # Agents used
+            s1 = job.get("stage1_outputs", {})
+            s2 = job.get("cascade_outputs", {})
+            all_agents = list(s1.keys()) + list(s2.keys())
+            agent_chips = ""
+            for ag in all_agents:
+                role = AGENT_ROLES.get(ag, ag.capitalize())
+                agent_chips += (
+                    f'<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;'
+                    f'background:#f1f5f9;color:#475569;white-space:nowrap;">'
+                    f'{ag.capitalize()} — {role}</span> '
+                )
+
+            # Assembled files
+            af = job.get("assembled_files", {})
+            file_btns = ""
+            for key, fname in af.items():
+                fm = FILE_META.get(key, {"label": key, "bg": "#f1f5f9", "fg": "#475569"})
+                path = OUTPUTS_DIR / fname
+                if path.exists():
+                    if fname.endswith(".html"):
+                        file_btns += (
+                            f'<a href="/outputs/view/{fname}" target="_blank" '
+                            f'style="font-size:11px;font-weight:700;padding:5px 11px;border-radius:6px;'
+                            f'background:{fm["bg"]};color:{fm["fg"]};text-decoration:none;white-space:nowrap;'
+                            f'border:1px solid {fm["fg"]}40;">Open {fm["label"]} →</a> '
+                        )
+                    file_btns += (
+                        f'<a href="/outputs/download/{fname}" '
+                        f'style="font-size:11px;font-weight:600;padding:5px 11px;border-radius:6px;'
+                        f'background:#f8fafc;color:#64748b;text-decoration:none;white-space:nowrap;'
+                        f'border:1px solid #e2e8f0;">⬇ {fname.rsplit(".",1)[-1].upper()}</a> '
+                    )
+
+            brief_snippet = brief[:120] + "..." if len(brief) > 120 else brief
+
+            body += f"""
+<div style="background:white;border-radius:12px;padding:20px 24px;margin-bottom:14px;
+            box-shadow:0 1px 4px rgba(0,0,0,0.08);border-left:4px solid {cm['fg']}40;">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:12px;">
+    <div style="flex:1;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <span style="font-size:15px;font-weight:700;color:#1e293b;">{title}</span>
+        <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;
+                     background:{cm['bg']};color:{cm['fg']};">{client_label.upper()}</span>
+      </div>
+      <div style="font-size:12px;color:#94a3b8;margin-bottom:8px;">{ts}</div>
+      <div style="font-size:12px;color:#64748b;line-height:1.5;">{brief_snippet}</div>
+    </div>
+  </div>
+  {"<div style='display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;'>" + agent_chips + "</div>" if agent_chips else ""}
+  {"<div style='display:flex;flex-wrap:wrap;gap:6px;'>" + file_btns + "</div>" if file_btns else ""}
+</div>"""
+
+    count = len(jobs)
+    total = len(all_jobs)
+    return HTMLResponse(f"""<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Outputs — Studio N</title>
+<style>
+  {_PAGE_STYLE}
+  .page-head {{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px;}}
+  .page-title {{font-size:20px;font-weight:700;}}
+  .page-count {{font-size:13px;color:#94a3b8;}}
+</style></head><body>
+{_nav('outputs')}
+<div class="container">
+  <div class="page-head">
+    <span class="page-title">Outputs</span>
+    <span class="page-count">{count} job{'s' if count!=1 else ''} · {total} total</span>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:24px;">{tabs_html}</div>
+  {body}
+</div></body></html>""")
+
+# ── Legacy file-based outputs (kept for backward compat) ──────────
 
 def _parse_output_file(path: Path) -> dict:
     info = {"filename": path.name, "size_kb": round(path.stat().st_size/1024,1),

@@ -8,61 +8,111 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1e293b; min-height: 100vh; }
 
+    /* NAV */
     nav { background: #1e293b; padding: 14px 32px; display: flex; align-items: center; justify-content: space-between; }
     .nav-brand { color: white; font-size: 16px; font-weight: 700; text-decoration: none; }
-    .nav-right { display: flex; align-items: center; gap: 14px; }
-    .client-tags { display: flex; gap: 6px; }
-    .ctag { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 4px; }
-    .ct-ai  { background: #dbeafe; color: #1d4ed8; }
-    .ct-wb  { background: #dcfce7; color: #16a34a; }
-    .ct-ch  { background: #fef9c3; color: #a16207; }
+    .nav-brand span { font-weight: 400; opacity: 0.45; font-size: 12px; margin-left: 6px; }
+    .nav-right { display: flex; align-items: center; gap: 6px; }
     .nav-link { color: #94a3b8; font-size: 13px; text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: all 0.15s; }
     .nav-link:hover { background: rgba(255,255,255,0.1); color: white; }
 
-    .container { max-width: 860px; margin: 0 auto; padding: 32px 24px 80px; }
+    /* CLIENT TABS */
+    .client-bar { background: white; border-bottom: 1px solid #e2e8f0; padding: 0 32px; display: flex; gap: 2px; }
+    .ctab {
+      font-size: 13px; font-weight: 600; padding: 13px 18px; cursor: pointer;
+      border: none; background: none; color: #64748b;
+      border-bottom: 3px solid transparent; margin-bottom: -1px;
+      transition: all 0.15s; white-space: nowrap; display: flex; align-items: center; gap: 6px;
+    }
+    .ctab:hover { color: #1e293b; }
+    .ctab.active { color: #1e293b; border-bottom-color: #1e293b; }
+    .ctab.active.wibiz   { color: #15803d; border-bottom-color: #15803d; }
+    .ctab.active.ai      { color: #1d4ed8; border-bottom-color: #1d4ed8; }
+    .ctab.active.charter { color: #a16207; border-bottom-color: #a16207; }
+    .ctab-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .ctab.active.wibiz   .ctab-dot { background: #15803d; }
+    .ctab.active.ai      .ctab-dot { background: #1d4ed8; }
+    .ctab.active.charter .ctab-dot { background: #a16207; }
+    .ctab:not(.active)   .ctab-dot { background: #cbd5e1; }
 
-    /* Brief panel */
-    .brief-panel { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 20px; }
-    .brief-panel label { display: block; font-weight: 600; font-size: 13px; color: #475569; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
-    textarea { width: 100%; height: 130px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; font-size: 14px; font-family: inherit; line-height: 1.6; resize: vertical; outline: none; transition: border-color 0.2s; color: #1e293b; }
+    /* CONTAINER */
+    .container { max-width: 820px; margin: 0 auto; padding: 28px 24px 80px; }
+
+    /* PROJECT NAME (Other tab only) */
+    .project-name-row { display: none; margin-bottom: 14px; }
+    .project-name-row.visible { display: block; }
+    .project-name-row input {
+      width: 100%; border: 1px solid #e2e8f0; border-radius: 8px;
+      padding: 10px 13px; font-size: 14px; font-family: inherit;
+      color: #1e293b; outline: none; transition: border-color 0.2s;
+    }
+    .project-name-row input:focus { border-color: #475569; }
+
+    /* BRIEF PANEL */
+    .brief-panel { background: white; border-radius: 12px; padding: 22px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); margin-bottom: 20px; }
+
+    .field-label { display: block; font-weight: 600; font-size: 11px; color: #64748b; margin-bottom: 7px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    .title-input {
+      width: 100%; border: 1px solid #e2e8f0; border-radius: 8px;
+      padding: 10px 13px; font-size: 15px; font-weight: 600; font-family: inherit;
+      color: #1e293b; outline: none; transition: border-color 0.2s; margin-bottom: 16px;
+    }
+    .title-input:focus { border-color: #475569; }
+    .title-input::placeholder { font-weight: 400; color: #94a3b8; }
+
+    textarea {
+      width: 100%; height: 120px; border: 1px solid #e2e8f0; border-radius: 8px;
+      padding: 12px 14px; font-size: 14px; font-family: inherit; line-height: 1.6;
+      resize: vertical; outline: none; transition: border-color 0.2s; color: #1e293b;
+    }
     textarea:focus { border-color: #475569; }
+
     .brief-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
-    .hint { font-size: 12px; color: #94a3b8; max-width: 500px; }
-    .btn-submit { background: #1e293b; color: white; border: none; padding: 11px 28px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s; white-space: nowrap; }
+    .hint { font-size: 12px; color: #94a3b8; max-width: 480px; }
+    .btn-submit {
+      background: #1e293b; color: white; border: none; padding: 11px 26px;
+      border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: background 0.15s; white-space: nowrap;
+    }
     .btn-submit:hover:not(:disabled) { background: #334155; }
     .btn-submit:disabled { background: #94a3b8; cursor: not-allowed; }
 
-    /* Save notice */
+    /* SAVE NOTICE */
     .save-notice { display: none; background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 11px 16px; margin-bottom: 16px; font-size: 13px; color: #166534; align-items: center; gap: 8px; }
     .save-notice.visible { display: flex; }
 
-    /* Status bar */
-    .status-bar { display: none; background: white; border-radius: 10px; padding: 14px 18px; margin-bottom: 20px; border-left: 3px solid #1e293b; box-shadow: 0 1px 3px rgba(0,0,0,0.08); align-items: flex-start; gap: 12px; }
+    /* STATUS BAR */
+    .status-bar { display: none; background: white; border-radius: 10px; padding: 14px 18px; margin-bottom: 20px; border-left: 3px solid #1e293b; box-shadow: 0 1px 3px rgba(0,0,0,0.07); align-items: flex-start; gap: 12px; }
     .status-bar.visible { display: flex; }
     .spinner { width: 16px; height: 16px; border: 2px solid #e2e8f0; border-top-color: #1e293b; border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; margin-top: 2px; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .status-text { font-size: 13px; color: #475569; font-weight: 500; }
     .agent-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
     .chip { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 20px; transition: all 0.3s; }
-    .chip-waiting { background: #f1f5f9; color: #94a3b8; }
-    .chip-running { background: #dbeafe; color: #2563eb; animation: pulse 1.4s ease-in-out infinite; }
-    .chip-cascade { background: #ede9fe; color: #6d28d9; animation: pulse 1.4s ease-in-out infinite; }
-    .chip-done    { background: #dcfce7; color: #16a34a; }
+    .chip-waiting  { background: #f1f5f9; color: #94a3b8; }
+    .chip-running  { background: #dbeafe; color: #2563eb; animation: pulse 1.4s ease-in-out infinite; }
+    .chip-cascade  { background: #ede9fe; color: #6d28d9; animation: pulse 1.4s ease-in-out infinite; }
+    .chip-done     { background: #dcfce7; color: #16a34a; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
 
-    /* Output area */
+    /* OUTPUT AREA */
     .output-area { display: none; }
     .output-area.visible { display: block; }
 
-    /* Stage divider */
+    /* STAGE DIVIDER */
     .stage-divider { display: flex; align-items: center; gap: 12px; margin: 24px 0 16px; }
     .stage-divider span { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #94a3b8; white-space: nowrap; }
     .stage-divider::before, .stage-divider::after { content: ''; flex: 1; height: 1px; background: #e2e8f0; }
 
-    /* Cards */
-    .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-    .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #f1f5f9; }
-    .badge { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 6px; letter-spacing: 0.3px; }
+    /* CARDS */
+    .card { background: white; border-radius: 12px; padding: 22px 24px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
+    .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid #f1f5f9; }
+    .agent-label { display: flex; flex-direction: column; gap: 2px; }
+    .agent-name { font-size: 13px; font-weight: 700; color: #1e293b; }
+    .agent-role { font-size: 11px; color: #94a3b8; }
+
+    .badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 5px; letter-spacing: 0.2px; }
     .badge-marcus   { background: #f1f5f9; color: #1e293b; }
     .badge-review   { background: #1e293b; color: white; }
     .badge-cascade-review { background: #1e293b; color: white; }
@@ -76,16 +126,15 @@
     .badge-reeva    { background: #fdf4ff; color: #7e22ce; }
     .review-card { border-left: 3px solid #1e293b; }
 
-    /* Third-party flag card */
-    .flag-card { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 16px 20px; margin-bottom: 12px; display: flex; gap: 12px; align-items: flex-start; }
-    .flag-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
-    .flag-title { font-size: 13px; font-weight: 700; color: #92400e; margin-bottom: 4px; }
+    /* FLAG CARD */
+    .flag-card { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; display: flex; gap: 12px; align-items: flex-start; }
+    .flag-icon { font-size: 15px; flex-shrink: 0; }
+    .flag-title { font-size: 13px; font-weight: 700; color: #92400e; margin-bottom: 3px; }
     .flag-msg { font-size: 13px; color: #78350f; line-height: 1.5; }
 
-    /* Assembly bundle card */
-    .assembly-card { background: white; border: 2px solid #1e293b; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-    .assembly-card .card-head { border-bottom-color: #e2e8f0; }
-    .assembly-badge { background: #1e293b; color: white; font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 6px; letter-spacing: 0.3px; }
+    /* ASSEMBLY */
+    .assembly-card { background: white; border: 2px solid #1e293b; border-radius: 12px; padding: 22px 24px; margin-bottom: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.09); }
+    .assembly-badge { background: #1e293b; color: white; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 5px; }
     .bundle-files { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
     .bundle-file { background: #f8fafc; border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .bundle-label { font-size: 13px; font-weight: 600; color: #1e293b; }
@@ -98,7 +147,7 @@
     .dl-btn.json { border-color: #e9d5ff; color: #7c3aed; }
     .dl-btn.json:hover { background: #faf5ff; }
 
-    /* Action buttons */
+    /* ACTION BUTTONS */
     .card-actions { display: flex; gap: 6px; align-items: center; }
     .action-btn { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 6px; cursor: pointer; border: 1px solid #e2e8f0; background: none; color: #64748b; transition: all 0.15s; white-space: nowrap; }
     .action-btn:hover { background: #f8fafc; color: #1e293b; }
@@ -106,7 +155,7 @@
     .action-btn.pdf-btn { border-color: #bfdbfe; color: #2563eb; }
     .action-btn.pdf-btn:hover { background: #eff6ff; }
 
-    /* Markdown */
+    /* MARKDOWN */
     .md { font-size: 14px; line-height: 1.75; color: #334155; }
     .md h1 { font-size: 17px; font-weight: 700; color: #1e293b; margin: 18px 0 8px; }
     .md h2 { font-size: 15px; font-weight: 700; color: #1e293b; margin: 16px 0 6px; }
@@ -120,31 +169,51 @@
     .md table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 13px; }
     .md th, .md td { border: 1px solid #e2e8f0; padding: 8px 12px; text-align: left; }
     .md th { background: #f8fafc; font-weight: 600; }
+    .md blockquote { border-left: 3px solid #e2e8f0; padding-left: 14px; color: #64748b; font-style: italic; margin: 12px 0; }
   </style>
 </head>
 <body>
 
 <nav>
-  <a href="/" class="nav-brand">Studio N <span style="font-weight:400;opacity:0.5;font-size:12px;">by Marcus</span></a>
+  <a href="/" class="nav-brand">Studio N <span>by Marcus</span></a>
   <div class="nav-right">
-    <div class="client-tags">
-      <span class="ctag ct-ai">AI Living</span>
-      <span class="ctag ct-wb">WiBiz</span>
-      <span class="ctag ct-ch">Charter</span>
-    </div>
-    <a href="/studio" class="nav-link">Studio</a>
     <a href="/outputs" class="nav-link">Outputs</a>
     <a href="/logout" class="nav-link" style="color:#64748b;">Sign out</a>
   </div>
 </nav>
 
+<!-- CLIENT TABS -->
+<div class="client-bar">
+  <button class="ctab wibiz active" onclick="setClient('wibiz', this)">
+    <span class="ctab-dot"></span> WiBiz
+  </button>
+  <button class="ctab ai" onclick="setClient('ai-living', this)">
+    <span class="ctab-dot"></span> AI Living
+  </button>
+  <button class="ctab charter" onclick="setClient('charter', this)">
+    <span class="ctab-dot"></span> Club Charter
+  </button>
+  <button class="ctab other-tab" onclick="setClient('other', this)">
+    <span class="ctab-dot"></span> Other Projects
+  </button>
+</div>
+
 <div class="container">
 
+  <!-- Project name field (Other tab only) -->
+  <div class="project-name-row" id="project-name-row">
+    <label class="field-label">Project Name</label>
+    <input type="text" id="project-name" placeholder="e.g. Asahi Campaign, World Wrap Podcast…">
+  </div>
+
   <div class="brief-panel">
-    <label>Brief</label>
-    <textarea id="brief" placeholder="Example: AI Living. Brand foundation brief for The Meridien condo development. We need the full brand identity — positioning, tone, visual direction — ready to cascade into website copy, one-pager, and design brief."></textarea>
+    <label class="field-label">Title <span style="color:#ef4444;">*</span></label>
+    <input class="title-input" id="job-title" placeholder="e.g. Charter — After-Hours Gap Reels, WiBiz LinkedIn Campaign Q2…" required>
+
+    <label class="field-label">Brief</label>
+    <textarea id="brief" placeholder="Include: deliverable type · audience · angle · any specific requirements. Be specific — Marcus will route to the right agents automatically."></textarea>
     <div class="brief-footer">
-      <span class="hint">Include: client · deliverable type · audience · angle. Cascade runs automatically after Marcus approves.</span>
+      <span class="hint">Submit → Marcus routes to agents → outputs appear below. Enter to submit.</span>
       <div style="display:flex;align-items:center;gap:12px;">
         <span style="font-size:12px;color:#94a3b8;" id="char-count"></span>
         <button class="btn-submit" id="submit-btn" onclick="submitBrief()">Submit Brief</button>
@@ -154,7 +223,7 @@
 
   <div class="save-notice" id="save-notice">
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M13.3 4.3L6 11.6 2.7 8.3" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    <span id="save-notice-text">Output auto-saved.</span>
+    <span id="save-notice-text">Output saved.</span>
   </div>
 
   <div class="status-bar" id="status-bar">
@@ -167,10 +236,13 @@
 
   <div class="output-area" id="output-area">
 
-    <!-- Stage 1 -->
+    <!-- Marcus analysis -->
     <div class="card" id="analysis-card" style="display:none;">
       <div class="card-head">
-        <span class="badge badge-marcus">Marcus — Brief Analysis</span>
+        <div class="agent-label">
+          <span class="agent-name">Marcus</span>
+          <span class="agent-role">Director of Marketing — Brief Analysis</span>
+        </div>
         <div class="card-actions">
           <button class="action-btn" id="copy-analysis" onclick="copyCard('analysis-content','copy-analysis')">Copy</button>
           <button class="action-btn" id="dl-analysis-md" onclick="downloadMd('analysis')">⬇ MD</button>
@@ -184,7 +256,10 @@
 
     <div class="card review-card" id="review-card" style="display:none;">
       <div class="card-head">
-        <span class="badge badge-review">Marcus — Stage 1 Review</span>
+        <div class="agent-label">
+          <span class="agent-name">Marcus</span>
+          <span class="agent-role">Director of Marketing — Stage 1 Review</span>
+        </div>
         <div class="card-actions">
           <button class="action-btn" id="copy-review" onclick="copyCard('review-content','copy-review')">Copy</button>
           <button class="action-btn pdf-btn" onclick="openPrint('review')">⬇ PDF</button>
@@ -193,13 +268,16 @@
       <div class="md" id="review-content"></div>
     </div>
 
-    <!-- Cascade stage -->
+    <!-- Cascade -->
     <div id="cascade-divider" style="display:none;" class="stage-divider"><span>Cascade — Stage 2</span></div>
     <div id="cascade-area"></div>
 
     <div class="card review-card" id="cascade-review-card" style="display:none;">
       <div class="card-head">
-        <span class="badge badge-cascade-review">Marcus — Cascade Review</span>
+        <div class="agent-label">
+          <span class="agent-name">Marcus</span>
+          <span class="agent-role">Director of Marketing — Final Review</span>
+        </div>
         <div class="card-actions">
           <button class="action-btn" id="copy-cr" onclick="copyCard('cascade-review-content','copy-cr')">Copy</button>
           <button class="action-btn pdf-btn" onclick="openPrint('full')">⬇ Full PDF</button>
@@ -208,11 +286,12 @@
       <div class="md" id="cascade-review-content"></div>
     </div>
 
-    <!-- Assembly bundle -->
+    <!-- Assembly -->
     <div id="assembly-divider" style="display:none;" class="stage-divider"><span>Final Assembly</span></div>
     <div id="assembly-card" class="assembly-card" style="display:none;">
       <div class="card-head">
-        <span class="assembly-badge" id="bundle-badge">5 Files Ready</span>
+        <span class="assembly-badge" id="bundle-badge">Files Ready</span>
+        <span style="font-size:12px;color:#64748b;">All outputs saved to your account</span>
       </div>
       <div id="bundle-files" class="bundle-files"></div>
     </div>
@@ -221,8 +300,39 @@
 </div>
 
 <script>
+// ── State ─────────────────────────────────────────────────────────
+let activeClient = 'wibiz';
 let currentJobId = null;
 const chips = {};
+
+const AGENT_ROLES = {
+  marcus: 'Director of Marketing',
+  reeva:  'Brand & Identity',
+  callum: 'LinkedIn & Long-Form',
+  priya:  'Social & Short-Form',
+  dante:  'Video & Reels',
+  suki:   'Static & Visual',
+  felix:  'Decks & Presentations',
+  nadia:  'Web & Copy',
+  zara:   'Research & Intelligence',
+};
+
+const CLIENT_PLACEHOLDERS = {
+  'wibiz':     'e.g. LinkedIn post series for the restaurant vertical launch. Audience: SMB owners. Lead with the after-hours gap.',
+  'ai-living': 'e.g. Committee approval summary one-pager for The Meridian. Audience: MC members. Emphasise no-app-download differentiator.',
+  'charter':   'e.g. 5-post Instagram series for Club Charter launch. Use SRC proof numbers. Audience: club GMs.',
+  'other':     'e.g. Campaign brief, research request, or any other creative work. Be as specific as possible.',
+};
+
+// ── Client tab switching ──────────────────────────────────────────
+function setClient(client, btn) {
+  activeClient = client;
+  document.querySelectorAll('.ctab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  const pnRow = document.getElementById('project-name-row');
+  pnRow.classList.toggle('visible', client === 'other');
+  document.getElementById('brief').placeholder = CLIENT_PLACEHOLDERS[client] || CLIENT_PLACEHOLDERS['other'];
+}
 
 // ── Markdown renderer ─────────────────────────────────────────────
 function md(raw) {
@@ -254,12 +364,13 @@ function md(raw) {
   }).join('');
 }
 
-// ── Chips ─────────────────────────────────────────────────────────
+// ── Agent chip ────────────────────────────────────────────────────
 function setChip(name, status) {
   if (!chips[name]) {
     const el = document.createElement('span');
     el.className = 'chip chip-waiting';
-    el.textContent = name.charAt(0).toUpperCase() + name.slice(1);
+    const role = AGENT_ROLES[name] || name;
+    el.textContent = name.charAt(0).toUpperCase() + name.slice(1) + ' — ' + role;
     document.getElementById('agent-chips').appendChild(el);
     chips[name] = el;
   }
@@ -279,16 +390,20 @@ function copyCard(cid, bid) {
 function downloadMd(agent) { if (currentJobId) window.location = `/api/export/${currentJobId}/${agent}.md`; }
 function openPrint(agent)  { if (currentJobId) window.open(`/api/export/${currentJobId}/${agent}/print`, '_blank'); }
 
-// ── Specialist card (stage 1 or cascade) ─────────────────────────
+// ── Agent card ────────────────────────────────────────────────────
 function addAgentCard(agent, content, containerId) {
   const area = document.getElementById(containerId);
   const cid  = `content-${containerId}-${agent}`;
   const bid  = `copy-${containerId}-${agent}`;
+  const role = AGENT_ROLES[agent] || agent.charAt(0).toUpperCase() + agent.slice(1);
   const card = document.createElement('div');
   card.className = 'card';
   card.innerHTML = `
     <div class="card-head">
-      <span class="badge badge-${agent}">${agent.charAt(0).toUpperCase() + agent.slice(1)}</span>
+      <div class="agent-label">
+        <span class="agent-name">${agent.charAt(0).toUpperCase() + agent.slice(1)}</span>
+        <span class="agent-role">${role}</span>
+      </div>
       <div class="card-actions">
         <button class="action-btn" id="${bid}" onclick="copyCard('${cid}','${bid}')">Copy</button>
         <button class="action-btn" onclick="downloadMd('${agent}')">⬇ MD</button>
@@ -300,12 +415,12 @@ function addAgentCard(agent, content, containerId) {
   setChip(agent, 'done');
 }
 
-// ── Third-party flag card ─────────────────────────────────────────
+// ── Flag card ─────────────────────────────────────────────────────
 function addFlagCard(flag, message) {
   const titles = {
     video_production: 'Video Production — Manual Step Required',
-    social_images:    'Static Images — Connection Required',
-    publishing:       'Publishing — Connection Required',
+    social_images:    'Static Images — Design Tool Required',
+    publishing:       'Publishing — Platform Connection Required',
   };
   const area = document.getElementById('cascade-area');
   const card = document.createElement('div');
@@ -319,7 +434,7 @@ function addFlagCard(flag, message) {
   area.appendChild(card);
 }
 
-// ── Event handler ─────────────────────────────────────────────────
+// ── SSE event handler ─────────────────────────────────────────────
 function handleEvent(e) {
   const ev = JSON.parse(e.data);
   switch (ev.type) {
@@ -366,22 +481,28 @@ function handleEvent(e) {
 
     case 'assembly_start':
       document.getElementById('assembly-divider').style.display = 'flex';
-      document.getElementById('status-text').textContent = 'Assembling 5 output files...';
+      document.getElementById('status-text').textContent = 'Assembling output files...';
       break;
 
     case 'assembly_bundle_done': {
       const container = document.getElementById('bundle-files');
       container.innerHTML = '';
       const fileOrder = ['html_website', 'html_onepager', 'canva_json', 'social_pack_cascade', 'video_brief'];
+      const fileLabels = {
+        html_website:        'HTML Website',
+        html_onepager:       'A4 One-Pager (PDF-ready)',
+        canva_json:          'Canva Template (JSON)',
+        social_pack_cascade: 'Social Content Pack',
+        video_brief:         'Video Brief (PDF-ready)',
+      };
       let fileCount = 0;
       for (const key of fileOrder) {
         const fname = ev.files[key];
-        const label = ev.labels[key];
         if (!fname) continue;
         fileCount++;
+        const label = fileLabels[key] || key;
         const isHtml = fname.endsWith('.html');
         const isJson = fname.endsWith('.json');
-        const isMd   = fname.endsWith('.md');
         const viewBtn = isHtml
           ? `<a class="view-btn" href="/outputs/view/${fname}" target="_blank">Open →</a>`
           : '';
@@ -394,18 +515,17 @@ function handleEvent(e) {
           </div>
           <div class="bundle-actions">
             ${viewBtn}
-            <a class="dl-btn${isJson ? ' json' : ''}" href="/outputs/download/${fname}">⬇ ${isHtml ? 'HTML' : isJson ? 'JSON' : 'MD'}</a>
+            <a class="dl-btn${isJson ? ' json' : ''}" href="/outputs/download/${fname}">⬇ ${isHtml?'HTML':isJson?'JSON':'MD'}</a>
           </div>`;
         container.appendChild(row);
       }
       const badge = document.getElementById('bundle-badge');
-      if (badge) badge.textContent = fileCount + ' Files Ready';
+      if (badge) badge.textContent = fileCount + ' Files Ready — Saved to your account';
       document.getElementById('assembly-card').style.display = 'block';
       break;
     }
 
     case 'assembly_done': {
-      // social pack fallback
       const row = document.createElement('div');
       row.className = 'bundle-file';
       row.innerHTML = `
@@ -426,7 +546,7 @@ function handleEvent(e) {
       document.getElementById('status-bar').classList.remove('visible');
       document.getElementById('submit-btn').disabled = false;
       document.getElementById('save-notice-text').textContent =
-        `Auto-saved to outputs/${ev.saved_as}`;
+        `Saved to your account. View in Outputs → ${activeClient === 'other' ? 'Other Projects' : activeClient.charAt(0).toUpperCase() + activeClient.slice(1)}.`;
       document.getElementById('save-notice').classList.add('visible');
       break;
 
@@ -439,7 +559,16 @@ function handleEvent(e) {
 
 // ── Submit ────────────────────────────────────────────────────────
 async function submitBrief() {
+  const title = document.getElementById('job-title').value.trim();
   const brief = document.getElementById('brief').value.trim();
+  const projectName = document.getElementById('project-name').value.trim();
+
+  if (!title) {
+    document.getElementById('job-title').focus();
+    document.getElementById('job-title').style.borderColor = '#ef4444';
+    setTimeout(() => { document.getElementById('job-title').style.borderColor = ''; }, 2000);
+    return;
+  }
   if (!brief) return;
 
   const btn = document.getElementById('submit-btn');
@@ -468,8 +597,14 @@ async function submitBrief() {
 
   try {
     const resp = await fetch('/api/brief', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({brief})
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        brief,
+        title,
+        client: activeClient,
+        project_name: projectName,
+      })
     });
     const {job_id, error} = await resp.json();
     if (error) throw new Error(error);
@@ -497,7 +632,6 @@ document.getElementById('brief').addEventListener('input', function() {
 document.getElementById('brief').addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitBrief(); }
 });
-
 </script>
 </body>
 </html>

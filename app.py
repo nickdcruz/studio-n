@@ -17,8 +17,9 @@ import requests
 from apify_client import ApifyClient
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from typing import List
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
@@ -1416,20 +1417,120 @@ async def logout(request: Request):
 async def index(request: Request):
     return templates.TemplateResponse(request=request, name="index.html")
 
+async def parse_uploaded_file(filename: str, data: bytes) -> str:
+    """Extract text content from an uploaded file. Images are described via Claude vision."""
+    import io
+    ext = Path(filename).suffix.lower()
+
+    if ext in ('.txt', '.md'):
+        return data.decode('utf-8', errors='replace')
+
+    elif ext == '.pdf':
+        try:
+            import pdfplumber
+            parts = []
+            with pdfplumber.open(io.BytesIO(data)) as pdf:
+                for page in pdf.pages:
+                    t = page.extract_text()
+                    if t:
+                        parts.append(t)
+            return '\n\n'.join(parts) if parts else '[PDF: no extractable text]'
+        except Exception as e:
+            return f'[PDF parse error: {e}]'
+
+    elif ext == '.docx':
+        try:
+            import docx
+            doc = docx.Document(io.BytesIO(data))
+            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+            # Also extract tables
+            for table in doc.tables:
+                for row in table.rows:
+                    paragraphs.append('\t'.join(c.text for c in row.cells if c.text.strip()))
+            return '\n'.join(paragraphs)
+        except Exception as e:
+            return f'[DOCX parse error: {e}]'
+
+    elif ext in ('.xlsx', '.xls'):
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+            parts = []
+            for sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                parts.append(f'Sheet: {sheet_name}')
+                for row in ws.iter_rows(values_only=True):
+                    row_text = '\t'.join(str(c) if c is not None else '' for c in row)
+                    if row_text.strip():
+                        parts.append(row_text)
+            return '\n'.join(parts)
+        except Exception as e:
+            return f'[Spreadsheet parse error: {e}]'
+
+    elif ext == '.csv':
+        try:
+            import csv
+            reader = csv.reader(io.StringIO(data.decode('utf-8', errors='replace')))
+            return '\n'.join('\t'.join(row) for row in reader)
+        except Exception as e:
+            return f'[CSV parse error: {e}]'
+
+    elif ext in ('.png', '.jpg', '.jpeg', '.gif', '.webp'):
+        try:
+            import base64
+            media_map = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+                         '.gif': 'image/gif', '.webp': 'image/webp'}
+            media_type = media_map.get(ext, 'image/jpeg')
+            b64 = base64.standard_b64encode(data).decode()
+            resp = await anthropic_client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=1500,
+                messages=[{"role": "user", "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64}},
+                    {"type": "text", "text": "Describe all content in this image in detail. Extract any text verbatim. Include layout, structure, and key visual information."}
+                ]}]
+            )
+            return resp.content[0].text
+        except Exception as e:
+            return f'[Image OCR error: {e}]'
+
+    else:
+        return f'[Unsupported file type: {ext}]'
+
+
 @app.post("/api/brief")
-async def start_brief(request: Request):
-    data         = await request.json()
-    brief        = data.get("brief", "").strip()
-    title        = data.get("title", "").strip()
-    client       = data.get("client", "other").strip()
-    project_name = data.get("project_name", "").strip()
+async def start_brief(
+    brief:        str  = Form(...),
+    title:        str  = Form(...),
+    client_name:  str  = Form("other", alias="client"),
+    project_name: str  = Form(""),
+    files:        List[UploadFile] = File(default=[]),
+):
+    brief        = brief.strip()
+    title        = title.strip()
+    client_name  = client_name.strip()
+    project_name = project_name.strip()
+
     if not brief:
         return JSONResponse({"error": "Brief is empty"}, status_code=400)
     if not title:
         return JSONResponse({"error": "Title is required"}, status_code=400)
+
+    # Parse uploaded files and append extracted content to the brief
+    if files:
+        attachments = []
+        for f in files:
+            if f.filename:
+                data = await f.read()
+                extracted = await parse_uploaded_file(f.filename, data)
+                attachments.append(f"--- Attached file: {f.filename} ---\n{extracted}")
+                logging.info("Parsed attachment: %s (%d bytes)", f.filename, len(data))
+        if attachments:
+            brief = brief + "\n\n" + "\n\n".join(attachments)
+
     job_id = str(uuid.uuid4())
     _jobs[job_id] = asyncio.Queue()
-    asyncio.create_task(process_job(job_id, brief, title=title, client=client, project_name=project_name))
+    asyncio.create_task(process_job(job_id, brief, title=title, client=client_name, project_name=project_name))
     return {"job_id": job_id}
 
 @app.get("/api/stream/{job_id}")

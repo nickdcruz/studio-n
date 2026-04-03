@@ -254,6 +254,38 @@
     .btn-submit:active:not(:disabled) { transform: translateY(0); }
     .btn-submit:disabled { background: #cbd5e1; cursor: not-allowed; box-shadow: none; }
 
+    /* ── FILE UPLOAD ─────────────────────────────────────────── */
+    .upload-zone {
+      border: 1.5px dashed #cbd5e1; border-radius: 10px; padding: 16px 18px;
+      margin-bottom: 18px; background: #f8fafc; cursor: pointer;
+      transition: all 0.2s; display: flex; align-items: center; gap: 12px;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: #94a3b8; background: #f1f5f9;
+    }
+    .upload-zone-icon {
+      width: 32px; height: 32px; border-radius: 8px; background: #e2e8f0;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .upload-zone-text { flex: 1; }
+    .upload-zone-label {
+      font-size: 13px; font-weight: 600; color: #475569; display: block;
+    }
+    .upload-zone-hint {
+      font-size: 11px; color: #94a3b8; margin-top: 2px;
+    }
+    .file-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .file-chip {
+      display: flex; align-items: center; gap: 5px;
+      background: #e2e8f0; border-radius: 6px; padding: 3px 8px 3px 7px;
+      font-size: 11px; font-weight: 600; color: #475569;
+    }
+    .file-chip-remove {
+      cursor: pointer; color: #94a3b8; font-size: 13px; line-height: 1;
+      margin-left: 2px;
+    }
+    .file-chip-remove:hover { color: #ef4444; }
+
     /* ── SAVE NOTICE ──────────────────────────────────────────── */
     .save-notice {
       display: none; background: #f0fdf4; border: 1px solid #86efac;
@@ -466,6 +498,26 @@
     <label class="field-label">Brief</label>
     <textarea id="brief"
       placeholder="Include: deliverable type · audience · angle · any specific requirements. Marcus reads this and routes to the right agents."></textarea>
+
+    <!-- File upload -->
+    <input type="file" id="file-input" multiple accept=".pdf,.docx,.doc,.md,.txt,.xlsx,.xls,.csv,.png,.jpg,.jpeg,.gif,.webp" style="display:none" onchange="handleFileSelect(this.files)">
+    <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()"
+         ondragover="e=>{e.preventDefault();this.classList.add('dragover')}"
+         ondragleave="this.classList.remove('dragover')"
+         ondrop="e=>{e.preventDefault();this.classList.remove('dragover');handleFileSelect(e.dataTransfer.files)}">
+      <div class="upload-zone-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+      </div>
+      <div class="upload-zone-text">
+        <span class="upload-zone-label">Attach files for Marcus to read</span>
+        <span class="upload-zone-hint">PDF · DOCX · MD · TXT · XLSX · CSV · Images — drag & drop or click</span>
+      </div>
+    </div>
+    <div class="file-chips" id="file-chips"></div>
 
     <div class="brief-footer">
       <span class="hint">
@@ -799,6 +851,32 @@ function handleEvent(e) {
   }
 }
 
+// ── File upload ───────────────────────────────────────────────────
+let selectedFiles = [];
+
+function handleFileSelect(fileList) {
+  for (const f of fileList) {
+    if (!selectedFiles.find(x => x.name === f.name && x.size === f.size)) {
+      selectedFiles.push(f);
+    }
+  }
+  renderFileChips();
+}
+
+function removeFile(idx) {
+  selectedFiles.splice(idx, 1);
+  renderFileChips();
+}
+
+function renderFileChips() {
+  const container = document.getElementById('file-chips');
+  container.innerHTML = selectedFiles.map((f, i) => `
+    <div class="file-chip">
+      <span>${f.name}</span>
+      <span class="file-chip-remove" onclick="removeFile(${i})">×</span>
+    </div>`).join('');
+}
+
 // ── Submit ────────────────────────────────────────────────────────
 async function submitBrief() {
   const title       = document.getElementById('job-title').value.trim();
@@ -835,13 +913,21 @@ async function submitBrief() {
   document.getElementById('status-text').textContent = 'Marcus is reading your brief...';
 
   try {
-    const resp = await fetch('/api/brief', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ brief, title, client: activeClient, project_name: projectName })
-    });
+    const fd = new FormData();
+    fd.append('brief', brief);
+    fd.append('title', title);
+    fd.append('client', activeClient);
+    fd.append('project_name', projectName);
+    for (const f of selectedFiles) fd.append('files', f);
+
+    const resp = await fetch('/api/brief', { method: 'POST', body: fd });
     const { job_id, error } = await resp.json();
     if (error) throw new Error(error);
+
+    // Clear files after successful submit
+    selectedFiles = [];
+    renderFileChips();
+    document.getElementById('file-input').value = '';
 
     const src = new EventSource(`/api/stream/${job_id}`);
     src.onmessage = e => {

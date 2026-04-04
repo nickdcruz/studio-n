@@ -1021,6 +1021,45 @@ _PAGE_STYLE = """
   .nav-link { color: #94a3b8; font-size: 13px; text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: all 0.15s; }
   .nav-link:hover, .nav-link.active { background: rgba(255,255,255,0.1); color: white; }
   .container { max-width: 900px; margin: 0 auto; padding: 32px 24px 80px; }
+  .dm-toggle { width:32px;height:32px;border-radius:7px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s;color:#94a3b8; }
+  .dm-toggle:hover { background:rgba(255,255,255,0.14);color:white; }
+  /* Job cards */
+  .job-card { background:white;border-radius:12px;padding:20px 24px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,0.08); }
+  .job-top { display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:12px; }
+  .job-title { font-size:15px;font-weight:700;color:#1e293b; }
+  .job-ts { font-size:12px;color:#94a3b8;margin-bottom:6px;margin-top:3px; }
+  .job-brief-text { font-size:12px;color:#64748b;line-height:1.5; }
+  .job-agents { display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px; }
+  .agent-chip { font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;background:#f1f5f9;color:#475569;white-space:nowrap; }
+  .job-files { display:flex;flex-wrap:wrap;gap:6px;align-items:center; }
+  .job-rebrief { font-size:11px;font-weight:700;padding:5px 12px;border-radius:6px;background:#f8fafc;color:#475569;text-decoration:none;border:1px solid #e2e8f0;white-space:nowrap;cursor:pointer;transition:all 0.15s; }
+  .job-rebrief:hover { background:#0f172a;color:white;border-color:#0f172a; }
+  /* Tabs */
+  .tab-bar { display:flex;flex-wrap:wrap;gap:6px;margin-bottom:24px; }
+  .tab-link { font-size:12px;font-weight:700;padding:6px 14px;border-radius:6px;text-decoration:none;white-space:nowrap;transition:all 0.15s; }
+  /* Search */
+  .search-bar { margin-bottom:20px; }
+  .search-input { width:100%;border:1px solid #e2e8f0;border-radius:9px;padding:10px 14px;font-size:14px;font-family:inherit;color:#1e293b;outline:none;background:white;transition:border-color 0.15s; }
+  .search-input:focus { border-color:#94a3b8; }
+  /* Page head */
+  .page-head { display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px; }
+  .page-title { font-size:20px;font-weight:700; }
+  .page-count { font-size:13px;color:#94a3b8; }
+  /* Dark mode */
+  body.dark { background:#0b1120;color:#cbd5e1; }
+  body.dark nav { background:#090f1c; }
+  body.dark .page-title { color:#e2e8f0; }
+  body.dark .page-count { color:#475569; }
+  body.dark .job-card { background:#141e2e;box-shadow:0 1px 3px rgba(0,0,0,0.4); }
+  body.dark .job-title { color:#e2e8f0; }
+  body.dark .job-ts { color:#475569; }
+  body.dark .job-brief-text { color:#475569; }
+  body.dark .agent-chip { background:#1e293b;color:#64748b; }
+  body.dark .job-rebrief { background:#1e293b;color:#64748b;border-color:#1e293b; }
+  body.dark .job-rebrief:hover { background:#334155;color:#e2e8f0;border-color:#334155; }
+  body.dark .search-input { background:#141e2e;border-color:#1e293b;color:#e2e8f0; }
+  body.dark .search-input:focus { border-color:#334155; }
+  body.dark .search-input::placeholder { color:#475569; }
 """
 
 _PRINT_STYLE = """
@@ -1047,8 +1086,17 @@ def _nav(active: str) -> str:
       <div class="nav-links">
         {lnk('/','Brief','brief')}
         {lnk('/outputs','Outputs','outputs')}
+        <button class="dm-toggle" onclick="toggleDark()" title="Toggle dark mode">
+          <svg id="dm-moon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg id="dm-sun"  width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        </button>
+        <a href="/logout" class="nav-link" style="color:#6b7280;">Sign out</a>
       </div>
-    </nav>"""
+    </nav>
+    <script>
+    (function(){{if(localStorage.getItem('dm')==='1'){{document.body.classList.add('dark');var m=document.getElementById('dm-moon'),s=document.getElementById('dm-sun');if(m)m.style.display='none';if(s)s.style.display='';}} }})();
+    function toggleDark(){{var d=document.body.classList.toggle('dark');localStorage.setItem('dm',d?'1':'0');var m=document.getElementById('dm-moon'),s=document.getElementById('dm-sun');if(m)m.style.display=d?'none':'';if(s)s.style.display=d?'':'none';}}
+    </script>"""
 
 def _print_page(title: str, brief: str, date: str, body: str) -> str:
     return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>{title}</title>
@@ -1533,6 +1581,21 @@ async def start_brief(
     asyncio.create_task(process_job(job_id, brief, title=title, client=client_name, project_name=project_name))
     return {"job_id": job_id}
 
+@app.get("/api/job/{job_id}")
+async def get_job(job_id: str):
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute(
+        "SELECT title, brief, client, project_name FROM jobs WHERE id=?", (job_id,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    title, brief, client_val, project_name = row
+    # Strip file attachment blocks — user just wants the original brief text
+    if "\n\n--- Attached file:" in brief:
+        brief = brief.split("\n\n--- Attached file:")[0]
+    return {"title": title, "brief": brief, "client": client_val, "project_name": project_name or ""}
+
 @app.get("/api/stream/{job_id}")
 async def stream_job(job_id: str):
     if job_id not in _jobs:
@@ -1743,16 +1806,14 @@ async def outputs_page(request: Request):
         ("other",     "Other",        "#f1f5f9", "#475569"),
     ]
     for key, label, bg, fg in tab_defs:
-        count = len([j for j in all_jobs if key == "all" or j.get("client") == key])
+        cnt = len([j for j in all_jobs if key == "all" or j.get("client") == key])
         is_active = key == active_client
         style = (f"background:{bg};color:{fg};border:2px solid {fg}40;"
                  if not is_active else
                  f"background:#1e293b;color:white;border:2px solid #1e293b;")
         tabs_html += (
-            f'<a href="/outputs?client={key}" style="{style}'
-            f'font-size:12px;font-weight:700;padding:6px 14px;border-radius:6px;'
-            f'text-decoration:none;white-space:nowrap;">'
-            f'{label} <span style="font-size:10px;opacity:0.7;">({count})</span></a> '
+            f'<a href="/outputs?client={key}" class="tab-link" style="{style}">'
+            f'{label} <span style="font-size:10px;opacity:0.7;">({cnt})</span></a> '
         )
 
     # ── Job cards ────────────────────────────────────────────────
@@ -1808,24 +1869,28 @@ async def outputs_page(request: Request):
                         f'border:1px solid #e2e8f0;">⬇ {fname.rsplit(".",1)[-1].upper()}</a> '
                     )
 
-            brief_snippet = brief[:120] + "..." if len(brief) > 120 else brief
+            brief_snippet = brief[:140] + "…" if len(brief) > 140 else brief
+            # strip file attachment blocks from snippet
+            if "\n\n--- Attached file:" in brief_snippet:
+                brief_snippet = brief_snippet.split("\n\n--- Attached file:")[0] + "…"
 
             body += f"""
-<div style="background:white;border-radius:12px;padding:20px 24px;margin-bottom:14px;
-            box-shadow:0 1px 4px rgba(0,0,0,0.08);border-left:4px solid {cm['fg']}40;">
-  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:12px;">
-    <div style="flex:1;">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-        <span style="font-size:15px;font-weight:700;color:#1e293b;">{title}</span>
-        <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;
-                     background:{cm['bg']};color:{cm['fg']};">{client_label.upper()}</span>
+<div class="job-card" style="border-left:4px solid {cm['fg']}40;" data-title="{title.lower()}" data-brief="{brief_snippet.lower()}">
+  <div class="job-top">
+    <div style="flex:1;min-width:0;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span class="job-title">{title}</span>
+        <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;background:{cm['bg']};color:{cm['fg']};white-space:nowrap;">{client_label.upper()}</span>
       </div>
-      <div style="font-size:12px;color:#94a3b8;margin-bottom:8px;">{ts}</div>
-      <div style="font-size:12px;color:#64748b;line-height:1.5;">{brief_snippet}</div>
+      <div class="job-ts">{ts}</div>
+      <div class="job-brief-text">{brief_snippet}</div>
     </div>
   </div>
-  {"<div style='display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;'>" + agent_chips + "</div>" if agent_chips else ""}
-  {"<div style='display:flex;flex-wrap:wrap;gap:6px;'>" + file_btns + "</div>" if file_btns else ""}
+  {"<div class='job-agents'>" + agent_chips + "</div>" if agent_chips else ""}
+  <div class="job-files">
+    {file_btns}
+    <a href="/?rebrief={jid}" class="job-rebrief">↩ Re-brief</a>
+  </div>
 </div>"""
 
     count = len(jobs)
@@ -1833,21 +1898,34 @@ async def outputs_page(request: Request):
     return HTMLResponse(f"""<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Outputs — Studio N</title>
-<style>
-  {_PAGE_STYLE}
-  .page-head {{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px;}}
-  .page-title {{font-size:20px;font-weight:700;}}
-  .page-count {{font-size:13px;color:#94a3b8;}}
-</style></head><body>
+<style>{_PAGE_STYLE}</style></head><body>
 {_nav('outputs')}
 <div class="container">
   <div class="page-head">
     <span class="page-title">Outputs</span>
-    <span class="page-count">{count} job{'s' if count!=1 else ''} · {total} total</span>
+    <span class="page-count" id="result-count">{count} job{'s' if count!=1 else ''} · {total} total</span>
   </div>
-  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:24px;">{tabs_html}</div>
-  {body}
-</div></body></html>""")
+  <div class="tab-bar">{tabs_html}</div>
+  <div class="search-bar">
+    <input class="search-input" type="text" placeholder="Search by title or brief content…" oninput="filterJobs(this.value)">
+  </div>
+  <div id="jobs-list">{body}</div>
+</div>
+<script>
+function filterJobs(q) {{
+  q = q.toLowerCase().trim();
+  var cards = document.querySelectorAll('.job-card');
+  var shown = 0;
+  cards.forEach(function(c) {{
+    var match = !q || c.dataset.title.includes(q) || c.dataset.brief.includes(q);
+    c.style.display = match ? '' : 'none';
+    if (match) shown++;
+  }});
+  var el = document.getElementById('result-count');
+  if (el) el.textContent = shown + ' job' + (shown !== 1 ? 's' : '') + ' · {total} total';
+}}
+</script>
+</body></html>""")
 
 # ── Legacy file-based outputs (kept for backward compat) ──────────
 

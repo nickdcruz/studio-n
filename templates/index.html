@@ -430,6 +430,49 @@
     .md th { background: #f8fafc; font-weight: 600; }
     .md blockquote { border-left: 3px solid #e2e8f0; padding-left: 14px; color: #64748b; font-style: italic; margin: 12px 0; }
 
+    /* ── TEMPLATES ───────────────────────────────────────────── */
+    .tpl-btn {
+      font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;
+      border:1px solid #e2e8f0;background:#f8fafc;color:#64748b;
+      cursor:pointer;font-family:inherit;transition:all 0.15s;
+    }
+    .tpl-btn:hover { background:#f1f5f9;color:#1e293b; }
+    .tpl-panel {
+      display:none;position:absolute;right:0;top:calc(100% + 6px);
+      background:white;border:1px solid #e2e8f0;border-radius:10px;
+      box-shadow:0 8px 24px rgba(0,0,0,0.12);min-width:280px;max-width:340px;
+      z-index:50;
+    }
+    .tpl-panel.open { display:block; }
+    .tpl-panel-head {
+      display:flex;align-items:center;justify-content:space-between;
+      padding:12px 14px 8px;border-bottom:1px solid #f1f5f9;
+      font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.5px;
+    }
+    .tpl-save-btn {
+      font-size:11px;font-weight:600;padding:3px 9px;border-radius:5px;
+      border:1px solid #bfdbfe;color:#2563eb;background:none;cursor:pointer;
+      font-family:inherit;transition:all 0.15s;
+    }
+    .tpl-save-btn:hover { background:#eff6ff; }
+    .tpl-item {
+      display:flex;align-items:center;justify-content:space-between;
+      padding:9px 14px;cursor:pointer;transition:background 0.1s;gap:8px;
+    }
+    .tpl-item:hover { background:#f8fafc; }
+    .tpl-item-name { font-size:13px;font-weight:600;color:#1e293b;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .tpl-item-client { font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;flex-shrink:0; }
+    .tpl-item-del { font-size:15px;color:#cbd5e1;cursor:pointer;flex-shrink:0;line-height:1; }
+    .tpl-item-del:hover { color:#ef4444; }
+    .tpl-empty { padding:16px 14px;font-size:12px;color:#94a3b8;text-align:center; }
+
+    body.dark .tpl-btn { background:#1e293b;border-color:#334155;color:#64748b; }
+    body.dark .tpl-btn:hover { background:#334155;color:#94a3b8; }
+    body.dark .tpl-panel { background:#141e2e;border-color:#1e293b;box-shadow:0 8px 24px rgba(0,0,0,0.4); }
+    body.dark .tpl-panel-head { border-bottom-color:#1e293b;color:#475569; }
+    body.dark .tpl-item:hover { background:#1e293b; }
+    body.dark .tpl-item-name { color:#e2e8f0; }
+
     /* ── DARK MODE TOGGLE BUTTON ──────────────────────────────── */
     .dm-toggle {
       width: 34px; height: 34px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);
@@ -622,7 +665,20 @@
 
     <div class="brief-divider"></div>
 
-    <label class="field-label">Brief</label>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;">
+      <label class="field-label" style="margin-bottom:0;">Brief</label>
+      <div style="position:relative;">
+        <button class="tpl-btn" id="tpl-btn" onclick="toggleTemplates()" type="button">Templates ▾</button>
+        <div class="tpl-panel" id="tpl-panel">
+          <div class="tpl-panel-head">
+            <span>Saved Templates</span>
+            <button class="tpl-save-btn" onclick="saveAsTemplate()" type="button">+ Save current</button>
+          </div>
+          <div id="tpl-list"></div>
+          <div class="tpl-empty" id="tpl-empty">No templates yet. Fill a brief and click "+ Save current".</div>
+        </div>
+      </div>
+    </div>
     <textarea id="brief"
       placeholder="Include: deliverable type · audience · angle · any specific requirements. Marcus reads this and routes to the right agents."></textarea>
 
@@ -977,6 +1033,116 @@ function handleEvent(e) {
       break;
   }
 }
+
+// ── Re-brief from URL param ───────────────────────────────────────
+(async function() {
+  const params = new URLSearchParams(location.search);
+  const rebrief = params.get('rebrief');
+  if (!rebrief) return;
+  try {
+    const r = await fetch(`/api/job/${rebrief}`);
+    const d = await r.json();
+    if (d.error) return;
+    document.getElementById('job-title').value = d.title || '';
+    document.getElementById('brief').value = d.brief || '';
+    if (d.project_name) document.getElementById('project-name').value = d.project_name;
+    const tabMap = { 'wibiz': '.ctab.wibiz', 'ai-living': '.ctab.ai', 'charter': '.ctab.charter', 'other': '.ctab.other-tab' };
+    const tabEl = document.querySelector(tabMap[d.client] || '.ctab.wibiz');
+    if (tabEl) tabEl.click();
+    history.replaceState({}, '', '/');
+    document.getElementById('brief').focus();
+  } catch(e) {}
+})();
+
+// ── Templates ─────────────────────────────────────────────────────
+const CLIENT_COLORS = {
+  'wibiz':     { bg:'#dcfce7', fg:'#15803d', label:'WiBiz' },
+  'ai-living': { bg:'#dbeafe', fg:'#1d4ed8', label:'AI Living' },
+  'charter':   { bg:'#fef9c3', fg:'#a16207', label:'Charter' },
+  'other':     { bg:'#f1f5f9', fg:'#475569', label:'Other' },
+};
+
+const DEFAULT_TEMPLATES = [
+  { id:'t_li',  name:'Weekly LinkedIn post',    client:'wibiz',     title:'WiBiz LinkedIn — Weekly Post', brief:'Write a LinkedIn post in founder voice for Nick. Topic: [insert topic]. Audience: SME owners in Singapore and APAC. Angle: [insert angle]. Call to action: soft — curiosity or question.' },
+  { id:'t_reel',name:'Charter Reel batch',      client:'charter',   title:'Club Charter — Reels Batch',   brief:'Produce a batch of 3 Instagram Reels concepts for Club Charter. Audience: Club GMs and membership directors. Format: vertical 30s. Angle: show the gap between how clubs communicate today vs with Charter. Premium tone — no SaaS energy.' },
+  { id:'t_comp',name:'Competitive comparison',  client:'wibiz',     title:'WiBiz vs Competitors',         brief:'Build a competitive comparison one-pager for WiBiz against [competitor]. Focus on: AI automation depth, channel coverage, onboarding speed, and total cost. Format: side-by-side table. Audience: SME owners evaluating options.' },
+  { id:'t_sp',  name:'Social pack',             client:'ai-living', title:'AI Living — Social Pack',      brief:'Produce a full social pack for AI Living: 1 LinkedIn post (founder voice), 3 Instagram captions, 1 Facebook post, 5 hashtag sets. Topic: [insert topic]. Audience: property managers and condo management committees in Singapore.' },
+];
+
+function _loadTemplates() {
+  const stored = localStorage.getItem('studio_templates');
+  const custom = stored ? JSON.parse(stored) : [];
+  return [...DEFAULT_TEMPLATES, ...custom];
+}
+
+function _saveCustomTemplates(list) {
+  const custom = list.filter(t => !DEFAULT_TEMPLATES.find(d => d.id === t.id));
+  localStorage.setItem('studio_templates', JSON.stringify(custom));
+}
+
+function renderTemplates() {
+  const list = _loadTemplates();
+  const el = document.getElementById('tpl-list');
+  const empty = document.getElementById('tpl-empty');
+  if (!list.length) { el.innerHTML = ''; empty.style.display = ''; return; }
+  empty.style.display = 'none';
+  const cc = CLIENT_COLORS;
+  el.innerHTML = list.map(t => {
+    const c = cc[t.client] || cc.other;
+    const isDefault = DEFAULT_TEMPLATES.find(d => d.id === t.id);
+    return `<div class="tpl-item" onclick="loadTemplate('${t.id}')">
+      <span class="tpl-item-name">${t.name}</span>
+      <span class="tpl-item-client" style="background:${c.bg};color:${c.fg};">${c.label}</span>
+      ${isDefault ? '' : `<span class="tpl-item-del" onclick="event.stopPropagation();deleteTemplate('${t.id}')">×</span>`}
+    </div>`;
+  }).join('');
+}
+
+function loadTemplate(id) {
+  const t = _loadTemplates().find(x => x.id === id);
+  if (!t) return;
+  document.getElementById('job-title').value = t.title || '';
+  document.getElementById('brief').value = t.brief || '';
+  const tabMap = { 'wibiz': '.ctab.wibiz', 'ai-living': '.ctab.ai', 'charter': '.ctab.charter', 'other': '.ctab.other-tab' };
+  const tabEl = document.querySelector(tabMap[t.client] || '.ctab.wibiz');
+  if (tabEl) tabEl.click();
+  toggleTemplates(); // close panel
+  document.getElementById('brief').focus();
+}
+
+function saveAsTemplate() {
+  const title = document.getElementById('job-title').value.trim();
+  const brief = document.getElementById('brief').value.trim();
+  if (!title || !brief) { alert('Fill in the title and brief first.'); return; }
+  const name = prompt('Template name:', title);
+  if (!name) return;
+  const all = _loadTemplates();
+  const custom = all.filter(t => !DEFAULT_TEMPLATES.find(d => d.id === t.id));
+  custom.push({ id: 't_' + Date.now(), name, client: activeClient, title, brief });
+  localStorage.setItem('studio_templates', JSON.stringify(custom));
+  renderTemplates();
+}
+
+function deleteTemplate(id) {
+  const all = _loadTemplates();
+  const custom = all.filter(t => !DEFAULT_TEMPLATES.find(d => d.id === t.id) && t.id !== id);
+  localStorage.setItem('studio_templates', JSON.stringify(custom));
+  renderTemplates();
+}
+
+function toggleTemplates() {
+  const panel = document.getElementById('tpl-panel');
+  const open = panel.classList.toggle('open');
+  if (open) renderTemplates();
+}
+
+// Close template panel on outside click
+document.addEventListener('click', function(e) {
+  const panel = document.getElementById('tpl-panel');
+  if (panel && panel.classList.contains('open') && !panel.contains(e.target) && !document.getElementById('tpl-btn').contains(e.target)) {
+    panel.classList.remove('open');
+  }
+});
 
 // ── Dark mode ─────────────────────────────────────────────────────
 (function() {

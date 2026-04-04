@@ -1200,12 +1200,23 @@ async def process_job(job_id: str, brief: str, title: str = "",
     }
 
     try:
+        # Build context-enriched brief — tells Marcus and all agents exactly which
+        # client or project this is for, so they don't have to guess from tone clues.
+        _CLIENT_LABELS = {"wibiz": "WiBiz", "ai-living": "AI Living", "charter": "Club Charter"}
+        _label = _CLIENT_LABELS.get(client)
+        if _label:
+            enriched_brief = f"CLIENT: {_label}\n\nBRIEF:\n{brief}"
+        elif project_name:
+            enriched_brief = f"PROJECT: {project_name}\n\nBRIEF:\n{brief}"
+        else:
+            enriched_brief = brief
+
         await emit({"type": "status", "message": "Marcus is reading your brief..."})
         marcus_system = await fetch_agent("marcus")
         # Prefix puts the JSON requirement as the very first thing Marcus reads,
         # before his own identity prompt, so it can't be overridden by prose flow.
         marcus_raw = await call_agent(
-            ORCHESTRATION_PREFIX + marcus_system, brief, model="claude-opus-4-6")
+            ORCHESTRATION_PREFIX + marcus_system, enriched_brief, model="claude-opus-4-6")
 
         # Strip JSON block from analysis text if Marcus included one.
         json_match      = re.search(r"```json\s*(\{.*?\})\s*```", marcus_raw, re.DOTALL)
@@ -1229,9 +1240,9 @@ async def process_job(job_id: str, brief: str, title: str = "",
         # Runs whenever layer 1 produced no agents. Cannot be confused by prose.
         if not agents_needed:
             await emit({"type": "status", "message": "Extracting agent plan..."})
-            agents_needed = await extract_agents_from_analysis(marcus_analysis, brief)
+            agents_needed = await extract_agents_from_analysis(marcus_analysis, enriched_brief)
             if agents_needed:
-                agent_briefs = {n: f"Original brief: {brief}\n\nMarcus's analysis:\n{marcus_analysis}"
+                agent_briefs = {n: f"Original brief: {enriched_brief}\n\nMarcus's analysis:\n{marcus_analysis}"
                                 for n in agents_needed}
                 logging.info("job %s — layer2: extraction call resolved agents=%s", job_id, agents_needed)
             else:
@@ -1242,7 +1253,7 @@ async def process_job(job_id: str, brief: str, title: str = "",
             mentioned = [n for n in VALID_AGENTS if re.search(rf"\b{n}\b", marcus_raw, re.IGNORECASE)]
             if mentioned:
                 agents_needed = mentioned
-                agent_briefs  = {n: f"Original brief: {brief}\n\nMarcus's analysis:\n{marcus_analysis}"
+                agent_briefs  = {n: f"Original brief: {enriched_brief}\n\nMarcus's analysis:\n{marcus_analysis}"
                                  for n in mentioned}
                 logging.warning("job %s — layer3: text-scan inferred agents=%s", job_id, mentioned)
             else:
@@ -1272,7 +1283,7 @@ async def process_job(job_id: str, brief: str, title: str = "",
             # Zara: append live competitor Instagram data when brief signals research
             if "zara" in stage1_outputs:
                 await emit({"type": "status", "message": "Zara: running competitor intelligence scrape..."})
-                stage1_outputs["zara"] = await enrich_zara_with_apify(stage1_outputs["zara"], brief)
+                stage1_outputs["zara"] = await enrich_zara_with_apify(stage1_outputs["zara"], enriched_brief)
             for name, content in stage1_outputs.items():
                 logging.info("job %s — stage1 %s: %d chars", job_id, name, len(content))
                 await emit({"type": "specialist", "agent": name, "content": content})
@@ -1328,7 +1339,7 @@ async def process_job(job_id: str, brief: str, title: str = "",
             ctx = "\n\n".join(
                 f"## {n.capitalize()} — Approved\n\n{o}" for n, o in stage1_outputs.items())
             base_brief = (
-                f"Original brief: {brief}\n\n---\n\n"
+                f"Original brief: {enriched_brief}\n\n---\n\n"
                 f"APPROVED OUTPUTS FROM PREVIOUS STAGE (use as source of truth):\n\n{ctx}\n\n---\n\n"
                 f"Produce complete, final content — not a draft. This goes directly into the assembled deliverable."
             )

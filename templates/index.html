@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Studio N — v4.3</title>
+  <title>Studio N — v5.0</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -587,6 +587,50 @@
     body.dark .ctab.active.ai      { background: #0c1a3a; color: #60a5fa; }
     body.dark .ctab.active.charter { background: #1c1400; color: #fbbf24; }
     body.dark .ctab.active.other-tab { background: #0f172a; color: #64748b; }
+
+    /* ── AGENT SETTINGS ──────────────────────────────────────── */
+    .agent-settings { margin-bottom: 18px; }
+    .agent-settings-toggle {
+      display: flex; align-items: center; gap: 6px; cursor: pointer;
+      font-size: 12px; font-weight: 600; color: #94a3b8; user-select: none;
+      margin-bottom: 0; transition: color 0.15s;
+    }
+    .agent-settings-toggle:hover { color: #64748b; }
+    .agent-settings-toggle .toggle-arrow {
+      font-size: 10px; transition: transform 0.2s;
+    }
+    .agent-settings-toggle.open .toggle-arrow { transform: rotate(90deg); }
+    .agent-chips-grid {
+      display: none; flex-wrap: wrap; gap: 6px; margin-top: 10px;
+    }
+    .agent-chips-grid.open { display: flex; }
+    .agent-toggle-chip {
+      font-size: 11px; font-weight: 700; padding: 5px 12px; border-radius: 20px;
+      border: 1px solid #e2e8f0; background: #0f172a; color: white;
+      cursor: pointer; transition: all 0.15s; white-space: nowrap; user-select: none;
+    }
+    .agent-toggle-chip.off { background: #f1f5f9; color: #94a3b8; border-color: #e2e8f0; }
+    body.dark .agent-toggle-chip { background: #1e293b; color: #e2e8f0; border-color: #334155; }
+    body.dark .agent-toggle-chip.off { background: #0b1120; color: #334155; border-color: #1e293b; }
+    body.dark .agent-settings-toggle { color: #334155; }
+    body.dark .agent-settings-toggle:hover { color: #475569; }
+
+    /* ── MOBILE ──────────────────────────────────────────────── */
+    @media (max-width: 640px) {
+      nav { padding: 0 16px; }
+      #version-badge { display: none; }
+      .nav-left { gap: 8px; }
+      .nav-right { gap: 2px; }
+      .hero { padding: 24px 16px 0; }
+      .hero-title { font-size: 22px; }
+      .client-bar { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+      .container { padding: 16px 16px 60px; }
+      .brief-panel { padding: 18px 16px; }
+      .tpl-panel { position: fixed; left: 0; right: 0; bottom: 0; top: auto;
+        border-radius: 16px 16px 0 0; max-width: 100%; min-width: unset; }
+      .upload-zone { padding: 12px 14px; }
+      .brief-footer { flex-wrap: wrap; gap: 8px; }
+    }
   </style>
 </head>
 <body>
@@ -601,7 +645,7 @@
         <span class="nav-brand-sub">by Marcus</span>
       </div>
     </a>
-    <span class="version-badge">v4.3</span>
+    <span class="version-badge" id="version-badge">v5.0</span>
   </div>
   <div class="nav-right">
     <a href="/outputs" class="nav-link">Outputs</a>
@@ -701,6 +745,24 @@
       </div>
     </div>
     <div class="file-chips" id="file-chips"></div>
+
+    <!-- Agent settings -->
+    <div class="agent-settings" id="agent-settings">
+      <div class="agent-settings-toggle" id="agent-toggle-hdr" onclick="toggleAgentSettings()">
+        <span class="toggle-arrow">▶</span>
+        <span>Agent settings</span>
+      </div>
+      <div class="agent-chips-grid" id="agent-chips-grid">
+        <span class="agent-toggle-chip" data-agent="callum" onclick="toggleAgent(this)">Callum</span>
+        <span class="agent-toggle-chip" data-agent="priya" onclick="toggleAgent(this)">Priya</span>
+        <span class="agent-toggle-chip" data-agent="dante" onclick="toggleAgent(this)">Dante</span>
+        <span class="agent-toggle-chip" data-agent="suki" onclick="toggleAgent(this)">Suki</span>
+        <span class="agent-toggle-chip" data-agent="felix" onclick="toggleAgent(this)">Felix</span>
+        <span class="agent-toggle-chip" data-agent="nadia" onclick="toggleAgent(this)">Nadia</span>
+        <span class="agent-toggle-chip" data-agent="zara" onclick="toggleAgent(this)">Zara</span>
+        <span class="agent-toggle-chip" data-agent="reeva" onclick="toggleAgent(this)">Reeva</span>
+      </div>
+    </div>
 
     <div class="brief-footer">
       <span class="hint">
@@ -1026,6 +1088,10 @@ function handleEvent(e) {
       document.getElementById('save-notice-text').textContent =
         `Saved · view in Outputs under ${activeClient === 'other' ? (document.getElementById('project-name').value || 'Other Projects') : activeClient === 'ai-living' ? 'AI Living' : activeClient.charAt(0).toUpperCase() + activeClient.slice(1)}.`;
       document.getElementById('save-notice').classList.add('visible');
+      if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+        const jobTitle = document.getElementById('job-title').value.trim() || 'Job';
+        new Notification('Studio N — Job complete', { body: jobTitle + ' is ready.', icon: '/favicon.ico' });
+      }
       break;
     case 'error':
       document.getElementById('status-text').textContent = 'Error: ' + ev.message;
@@ -1166,6 +1232,34 @@ function toggleDark() {
   }
 })();
 
+// ── Agent settings ────────────────────────────────────────────────
+function toggleAgentSettings() {
+  const hdr = document.getElementById('agent-toggle-hdr');
+  const grid = document.getElementById('agent-chips-grid');
+  hdr.classList.toggle('open');
+  grid.classList.toggle('open');
+}
+
+function toggleAgent(chip) {
+  chip.classList.toggle('off');
+}
+
+function getSelectedAgents() {
+  const chips = document.querySelectorAll('.agent-toggle-chip');
+  const selected = [];
+  chips.forEach(function(c) {
+    if (!c.classList.contains('off')) selected.push(c.dataset.agent);
+  });
+  return selected;
+}
+
+// ── Browser notifications ─────────────────────────────────────────
+(function() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+})();
+
 // ── File upload ───────────────────────────────────────────────────
 let selectedFiles = [];
 
@@ -1233,6 +1327,7 @@ async function submitBrief() {
     fd.append('title', title);
     fd.append('client', activeClient);
     fd.append('project_name', projectName);
+    fd.append('allowed_agents', getSelectedAgents().join(','));
     for (const f of selectedFiles) fd.append('files', f);
 
     const resp = await fetch('/api/brief', { method: 'POST', body: fd });

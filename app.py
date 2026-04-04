@@ -66,6 +66,11 @@ def init_db():
             created_at      TEXT DEFAULT (datetime('now'))
         )
     """)
+    try:
+        conn.execute("ALTER TABLE jobs ADD COLUMN archived INTEGER DEFAULT 0")
+        conn.commit()
+    except Exception:
+        pass
     conn.commit()
     conn.close()
     logging.info("DB ready at %s", DB_PATH)
@@ -98,10 +103,13 @@ def db_save_job(job_id: str, job: dict, assembled_content: dict = None):
     conn.commit()
     conn.close()
 
-def db_load_all_jobs() -> list[dict]:
+def db_load_all_jobs(show_archived: bool = False) -> list[dict]:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    rows = conn.execute("SELECT * FROM jobs ORDER BY created_at DESC").fetchall()
+    if show_archived:
+        rows = conn.execute("SELECT * FROM jobs WHERE archived=1 ORDER BY created_at DESC").fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM jobs WHERE archived=0 OR archived IS NULL ORDER BY created_at DESC").fetchall()
     conn.close()
     result = []
     for r in rows:
@@ -1045,6 +1053,38 @@ _PAGE_STYLE = """
   .page-head { display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px; }
   .page-title { font-size:20px;font-weight:700; }
   .page-count { font-size:13px;color:#94a3b8; }
+  /* Star button */
+  .star-btn { background:none;border:none;cursor:pointer;font-size:16px;padding:0 2px;line-height:1;color:#cbd5e1;transition:color 0.15s;flex-shrink:0; }
+  .star-btn:hover { color:#f59e0b; }
+  .job-card.starred .star-btn { color:#f59e0b; }
+  /* Checkbox */
+  .job-check { width:15px;height:15px;cursor:pointer;flex-shrink:0;accent-color:#1e293b; }
+  /* Bulk archive bar */
+  .bulk-bar { display:none;position:sticky;bottom:20px;left:0;right:0;margin:0 auto;max-width:400px;
+    background:#1e293b;color:white;border-radius:12px;padding:12px 20px;
+    align-items:center;justify-content:space-between;gap:12px;
+    box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:50; }
+  .bulk-bar.visible { display:flex; }
+  .bulk-bar-label { font-size:13px;font-weight:600; }
+  .bulk-archive-btn { background:#ef4444;color:white;border:none;padding:7px 16px;border-radius:8px;
+    font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:background 0.15s; }
+  .bulk-archive-btn:hover { background:#dc2626; }
+  .bulk-cancel-btn { background:rgba(255,255,255,0.1);color:white;border:none;padding:7px 12px;border-radius:8px;
+    font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:background 0.15s; }
+  .bulk-cancel-btn:hover { background:rgba(255,255,255,0.2); }
+  /* ZIP button */
+  .zip-btn { font-size:11px;font-weight:700;padding:5px 11px;border-radius:6px;
+    background:#f0fdf4;color:#16a34a;text-decoration:none;white-space:nowrap;
+    border:1px solid #86efac;transition:all 0.15s; }
+  .zip-btn:hover { background:#dcfce7; }
+  /* Mobile responsive */
+  @media (max-width: 640px) {
+    nav { padding: 12px 16px; }
+    .container { padding: 16px 16px 60px; }
+    .job-card { padding: 16px 18px; }
+    .tab-bar { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+    .search-input { font-size: 16px; }
+  }
   /* Dark mode */
   body.dark { background:#0b1120;color:#cbd5e1; }
   body.dark nav { background:#090f1c; }
@@ -1144,7 +1184,8 @@ async def extract_agents_from_analysis(analysis: str, brief: str) -> list[str]:
 # ── Job processor ─────────────────────────────────────────────────
 
 async def process_job(job_id: str, brief: str, title: str = "",
-                      client: str = "other", project_name: str = "") -> None:
+                      client: str = "other", project_name: str = "",
+                      allowed_agents: list[str] | None = None) -> None:
     q = _jobs[job_id]
 
     async def emit(ev: dict) -> None:
@@ -1212,6 +1253,8 @@ async def process_job(job_id: str, brief: str, title: str = "",
         await emit({"type": "marcus_analysis", "content": marcus_analysis})
 
         valid_s1 = [n for n in agents_needed if n in agent_briefs and n in VALID_AGENTS]
+        if allowed_agents:
+            valid_s1 = [n for n in valid_s1 if n in allowed_agents]
         if valid_s1:
             await emit({"type": "agents_identified", "agents": valid_s1})
             await emit({"type": "status",
@@ -1274,6 +1317,8 @@ async def process_job(job_id: str, brief: str, title: str = "",
         cascade_outputs: dict[str, str] = {}
         next_agents = [n for n in cascade_plan.get("next_agents", [])
                        if n in VALID_AGENTS and n not in stage1_outputs]
+        if allowed_agents:
+            next_agents = [n for n in next_agents if n in allowed_agents]
 
         if next_agents:
             await emit({"type": "cascade_start", "agents": next_agents})
@@ -1548,11 +1593,12 @@ async def parse_uploaded_file(filename: str, data: bytes) -> str:
 
 @app.post("/api/brief")
 async def start_brief(
-    brief:        str  = Form(...),
-    title:        str  = Form(...),
-    client_name:  str  = Form("other", alias="client"),
-    project_name: str  = Form(""),
-    files:        List[UploadFile] = File(default=[]),
+    brief:          str  = Form(...),
+    title:          str  = Form(...),
+    client_name:    str  = Form("other", alias="client"),
+    project_name:   str  = Form(""),
+    allowed_agents: str  = Form(""),
+    files:          List[UploadFile] = File(default=[]),
 ):
     brief        = brief.strip()
     title        = title.strip()
@@ -1563,6 +1609,12 @@ async def start_brief(
         return JSONResponse({"error": "Brief is empty"}, status_code=400)
     if not title:
         return JSONResponse({"error": "Title is required"}, status_code=400)
+
+    allowed_list: list[str] | None = None
+    if allowed_agents.strip():
+        allowed_list = [a.strip() for a in allowed_agents.split(",") if a.strip() in VALID_AGENTS]
+        if not allowed_list:
+            allowed_list = None
 
     # Parse uploaded files and append extracted content to the brief
     if files:
@@ -1578,8 +1630,54 @@ async def start_brief(
 
     job_id = str(uuid.uuid4())
     _jobs[job_id] = asyncio.Queue()
-    asyncio.create_task(process_job(job_id, brief, title=title, client=client_name, project_name=project_name))
+    asyncio.create_task(process_job(job_id, brief, title=title, client=client_name,
+                                    project_name=project_name, allowed_agents=allowed_list))
     return {"job_id": job_id}
+
+@app.post("/api/job/{job_id}/archive")
+async def archive_job(job_id: str):
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("UPDATE jobs SET archived=1 WHERE id=?", (job_id,))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+@app.post("/api/job/{job_id}/unarchive")
+async def unarchive_job(job_id: str):
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("UPDATE jobs SET archived=0 WHERE id=?", (job_id,))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+@app.get("/outputs/zip/{job_id}")
+async def zip_job(job_id: str):
+    import io
+    import zipfile
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT title, assembled_files FROM jobs WHERE id=?", (job_id,)).fetchone()
+    conn.close()
+    if not row:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    title = row["title"] or "job"
+    try:
+        af = json.loads(row["assembled_files"] or "{}")
+    except Exception:
+        af = {}
+    safe_title = re.sub(r"[^a-z0-9]+", "-", title[:40].lower()).strip("-") or "job"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for key, fname in af.items():
+            path = OUTPUTS_DIR / fname
+            if path.exists():
+                zf.write(path, fname)
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.read()]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{safe_title}.zip"'},
+    )
 
 @app.get("/api/job/{job_id}")
 async def get_job(job_id: str):
@@ -1786,12 +1884,14 @@ async def outputs_page(request: Request):
     db_recover_missing_files()
 
     active_client = request.query_params.get("client", "all")
-    all_jobs = db_load_all_jobs()
+    show_archived = active_client == "archived"
 
-    # Also pull in any legacy .md files not in DB (backward compat)
-    db_ids = {j["id"] for j in all_jobs}
+    all_jobs = db_load_all_jobs(show_archived=False)
+    archived_jobs = db_load_all_jobs(show_archived=True)
 
-    if active_client != "all":
+    if show_archived:
+        jobs = archived_jobs
+    elif active_client != "all":
         jobs = [j for j in all_jobs if j.get("client") == active_client]
     else:
         jobs = all_jobs
@@ -1804,9 +1904,13 @@ async def outputs_page(request: Request):
         ("ai-living", "AI Living",    "#dbeafe", "#1d4ed8"),
         ("charter",   "Club Charter", "#fef9c3", "#a16207"),
         ("other",     "Other",        "#f1f5f9", "#475569"),
+        ("archived",  "Archived",     "#fee2e2", "#b91c1c"),
     ]
     for key, label, bg, fg in tab_defs:
-        cnt = len([j for j in all_jobs if key == "all" or j.get("client") == key])
+        if key == "archived":
+            cnt = len(archived_jobs)
+        else:
+            cnt = len([j for j in all_jobs if key == "all" or j.get("client") == key])
         is_active = key == active_client
         style = (f"background:{bg};color:{fg};border:2px solid {fg}40;"
                  if not is_active else
@@ -1834,6 +1938,7 @@ async def outputs_page(request: Request):
             ts     = job.get("timestamp", job.get("created_at", ""))[:16].replace("T", " ")
             cm     = CLIENT_META.get(client, CLIENT_META["other"])
             client_label = pname if (client == "other" and pname) else cm["label"]
+            is_archived = bool(job.get("archived", 0))
 
             # Agents used
             s1 = job.get("stage1_outputs", {})
@@ -1851,10 +1956,12 @@ async def outputs_page(request: Request):
             # Assembled files
             af = job.get("assembled_files", {})
             file_btns = ""
-            for key, fname in af.items():
-                fm = FILE_META.get(key, {"label": key, "bg": "#f1f5f9", "fg": "#475569"})
+            has_files = False
+            for fkey, fname in af.items():
+                fm = FILE_META.get(fkey, {"label": fkey, "bg": "#f1f5f9", "fg": "#475569"})
                 path = OUTPUTS_DIR / fname
                 if path.exists():
+                    has_files = True
                     if fname.endswith(".html"):
                         file_btns += (
                             f'<a href="/outputs/view/{fname}" target="_blank" '
@@ -1868,15 +1975,29 @@ async def outputs_page(request: Request):
                         f'background:#f8fafc;color:#64748b;text-decoration:none;white-space:nowrap;'
                         f'border:1px solid #e2e8f0;">⬇ {fname.rsplit(".",1)[-1].upper()}</a> '
                     )
+            # ZIP button
+            if has_files:
+                file_btns += f'<a href="/outputs/zip/{jid}" class="zip-btn">⬇ ZIP</a> '
+
+            # Archive/unarchive button
+            if is_archived:
+                archive_btn = f'<button onclick="unarchiveJob(\'{jid}\')" class="job-rebrief" style="color:#16a34a;">↑ Unarchive</button>'
+            else:
+                archive_btn = f'<button onclick="archiveJob(\'{jid}\')" class="job-rebrief" style="color:#b91c1c;">Archive</button>'
 
             brief_snippet = brief[:140] + "…" if len(brief) > 140 else brief
             # strip file attachment blocks from snippet
             if "\n\n--- Attached file:" in brief_snippet:
                 brief_snippet = brief_snippet.split("\n\n--- Attached file:")[0] + "…"
 
+            # Escape for HTML attributes
+            title_attr = title.lower().replace('"', '')
+            brief_attr = brief_snippet.lower().replace('"', '')
+
             body += f"""
-<div class="job-card" style="border-left:4px solid {cm['fg']}40;" data-title="{title.lower()}" data-brief="{brief_snippet.lower()}">
+<div class="job-card" id="card-{jid}" style="border-left:4px solid {cm['fg']}40;" data-id="{jid}" data-title="{title_attr}" data-brief="{brief_attr}">
   <div class="job-top">
+    <input type="checkbox" class="job-check" onchange="onCheckChange()" title="Select for bulk action">
     <div style="flex:1;min-width:0;">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <span class="job-title">{title}</span>
@@ -1885,11 +2006,13 @@ async def outputs_page(request: Request):
       <div class="job-ts">{ts}</div>
       <div class="job-brief-text">{brief_snippet}</div>
     </div>
+    <button class="star-btn" onclick="toggleStar('{jid}', this)" title="Star / pin this job">☆</button>
   </div>
   {"<div class='job-agents'>" + agent_chips + "</div>" if agent_chips else ""}
   <div class="job-files">
     {file_btns}
     <a href="/?rebrief={jid}" class="job-rebrief">↩ Re-brief</a>
+    {archive_btn}
   </div>
 </div>"""
 
@@ -1911,7 +2034,107 @@ async def outputs_page(request: Request):
   </div>
   <div id="jobs-list">{body}</div>
 </div>
+<div class="bulk-bar" id="bulk-bar">
+  <span class="bulk-bar-label" id="bulk-label">0 selected</span>
+  <div style="display:flex;gap:8px;">
+    <button class="bulk-cancel-btn" onclick="clearSelection()">Cancel</button>
+    <button class="bulk-archive-btn" onclick="bulkArchive()">Archive selected</button>
+  </div>
+</div>
 <script>
+// ── Star / Pin ────────────────────────────────────────────────
+var STARRED_KEY = 'studio_starred';
+function getStarred() {{
+  try {{ return JSON.parse(localStorage.getItem(STARRED_KEY) || '[]'); }} catch(e) {{ return []; }}
+}}
+function saveStarred(arr) {{ localStorage.setItem(STARRED_KEY, JSON.stringify(arr)); }}
+
+function toggleStar(jid, btn) {{
+  var starred = getStarred();
+  var idx = starred.indexOf(jid);
+  if (idx === -1) {{ starred.push(jid); btn.textContent = '★'; btn.closest('.job-card').classList.add('starred'); }}
+  else {{ starred.splice(idx, 1); btn.textContent = '☆'; btn.closest('.job-card').classList.remove('starred'); }}
+  saveStarred(starred);
+  sortCards();
+}}
+
+function sortCards() {{
+  var list = document.getElementById('jobs-list');
+  var cards = Array.from(list.querySelectorAll('.job-card'));
+  var starred = getStarred();
+  cards.sort(function(a, b) {{
+    var aS = starred.includes(a.dataset.id) ? 1 : 0;
+    var bS = starred.includes(b.dataset.id) ? 1 : 0;
+    return bS - aS;
+  }});
+  cards.forEach(function(c) {{ list.appendChild(c); }});
+}}
+
+function initStars() {{
+  var starred = getStarred();
+  document.querySelectorAll('.job-card').forEach(function(card) {{
+    var jid = card.dataset.id;
+    var btn = card.querySelector('.star-btn');
+    if (starred.includes(jid)) {{
+      card.classList.add('starred');
+      if (btn) btn.textContent = '★';
+    }}
+  }});
+  sortCards();
+}}
+
+// ── Bulk Archive ──────────────────────────────────────────────
+function onCheckChange() {{
+  var checked = document.querySelectorAll('.job-check:checked');
+  var bar = document.getElementById('bulk-bar');
+  var label = document.getElementById('bulk-label');
+  if (checked.length > 0) {{
+    bar.classList.add('visible');
+    label.textContent = checked.length + ' selected';
+  }} else {{
+    bar.classList.remove('visible');
+  }}
+}}
+
+function clearSelection() {{
+  document.querySelectorAll('.job-check:checked').forEach(function(cb) {{ cb.checked = false; }});
+  document.getElementById('bulk-bar').classList.remove('visible');
+}}
+
+async function archiveJob(jid) {{
+  await fetch('/api/job/' + jid + '/archive', {{method:'POST'}});
+  var card = document.getElementById('card-' + jid);
+  if (card) card.remove();
+  updateCount();
+}}
+
+async function unarchiveJob(jid) {{
+  await fetch('/api/job/' + jid + '/unarchive', {{method:'POST'}});
+  var card = document.getElementById('card-' + jid);
+  if (card) card.remove();
+  updateCount();
+}}
+
+async function bulkArchive() {{
+  var checked = document.querySelectorAll('.job-check:checked');
+  var ids = [];
+  checked.forEach(function(cb) {{ ids.push(cb.closest('.job-card').dataset.id); }});
+  for (var i = 0; i < ids.length; i++) {{
+    await fetch('/api/job/' + ids[i] + '/archive', {{method:'POST'}});
+    var card = document.getElementById('card-' + ids[i]);
+    if (card) card.remove();
+  }}
+  document.getElementById('bulk-bar').classList.remove('visible');
+  updateCount();
+}}
+
+function updateCount() {{
+  var visible = document.querySelectorAll('.job-card:not([style*="display: none"])').length;
+  var el = document.getElementById('result-count');
+  if (el) el.textContent = visible + ' job' + (visible !== 1 ? 's' : '') + ' · {total} total';
+}}
+
+// ── Search ────────────────────────────────────────────────────
 function filterJobs(q) {{
   q = q.toLowerCase().trim();
   var cards = document.querySelectorAll('.job-card');
@@ -1924,6 +2147,9 @@ function filterJobs(q) {{
   var el = document.getElementById('result-count');
   if (el) el.textContent = shown + ' job' + (shown !== 1 ? 's' : '') + ' · {total} total';
 }}
+
+// Init on load
+initStars();
 </script>
 </body></html>""")
 

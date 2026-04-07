@@ -754,10 +754,12 @@ async def assemble_video_brief(outputs: dict, brief: str) -> str:
         "6. Hook direction (first 3 seconds — what grabs attention, exact opening line)\n"
         "7. Talent and production notes\n\n"
         "Use the brand colors and typography from the approved outputs above. "
-        "Be specific — this brief goes straight to the production team."
+        "Be specific — this brief goes straight to the production team.\n\n"
+        "CRITICAL: You MUST deliver complete sections 1–7 for EVERY reel requested in the brief. "
+        "Do not truncate, summarise, or skip any reel. If the brief asks for 5 reels, deliver all 5 in full."
     )
     sys_ = await fetch_agent("dante")
-    content = await call_agent(sys_, video_brief_brief, model="claude-sonnet-4-6", max_tokens=4096)
+    content = await call_agent(sys_, video_brief_brief, model="claude-sonnet-4-6", max_tokens=16000)
 
     # Wrap in print-ready HTML
     primary   = bd["primary"]

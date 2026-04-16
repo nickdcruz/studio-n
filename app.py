@@ -317,20 +317,23 @@ After your analysis, end your response with a JSON block in this exact format �
 {"agents_needed": ["agent1", "agent2"], "briefs": {"agent1": "full brief text", "agent2": "full brief text"}}
 ```
 
-Valid agent names: callum, priya, dante, suki, felix, nadia, zara, reeva, kiara, rex, nova
+VALID AGENT NAMES — USE ONLY THESE EXACT STRINGS. DO NOT INVENT OTHERS:
+callum, priya, dante, suki, felix, nadia, zara, reeva, kiara, rex, nova
 
 Agent specialisms:
-- callum: LinkedIn and long-form content
-- priya: social and short-form content
-- dante: video concepts and reels
-- suki: static visuals and design briefs
+- callum: LinkedIn and long-form written content
+- priya: social media and short-form content (captions, hooks, threads)
+- dante: video scripts, shot lists, reels direction — USE THIS for any video scripting task
+- suki: static visual design briefs (Instagram posts, carousels, banners)
 - felix: decks and presentations
 - nadia: web copy and landing pages
 - zara: research and competitive intelligence
 - reeva: brand identity and strategy
-- kiara: AI video generation (Arcads/Seedance — use when actual video output is needed)
+- kiara: AI video generation via Arcads — USE THIS only when actually generating video with AI tools
 - rex: Remotion programmatic video code
-- nova: Nano Banana brand visuals and stills
+- nova: Nano Banana brand visuals and product stills
+
+If a name is not on the list above, DO NOT use it. There is no agent called "lena", "luna", "leo", or any other name. Only the 11 names listed.
 
 ---
 """
@@ -1280,9 +1283,10 @@ async def extract_agents_from_analysis(analysis: str, brief: str) -> list[str]:
         f"Marketing brief: {brief}\n\n"
         f"Strategic analysis:\n{analysis[:2000]}\n\n"
         "Which specialist agents are needed for this project? "
-        "Choose from: nadia, felix, callum, priya, dante, suki, reeva, zara\n"
-        "Return only a JSON array of names. Example: [\"reeva\", \"felix\", \"nadia\"]\n"
-        "No explanation. No other text. Just the array."
+        "Choose from ONLY these exact names: callum, priya, dante, suki, felix, nadia, zara, reeva, kiara, rex, nova\n"
+        "dante = video scripts and shot lists. kiara = AI video generation. rex = programmatic video code. nova = brand visuals.\n"
+        "Return only a JSON array of names from the list above. Example: [\"dante\", \"priya\"]\n"
+        "Do NOT invent names not on this list. No explanation. No other text. Just the array."
     )
     try:
         raw = await call_agent(

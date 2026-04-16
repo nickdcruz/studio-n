@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Studio — Studio N v6.0</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+      min-height: 100vh;
+    }
+
+    /* ── NAV ───────────────────────────────────────────────────── */
+    nav {
+      background: #0f172a;
+      padding: 0 32px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .nav-left { display: flex; align-items: center; gap: 16px; }
+    .nav-brand {
+      color: white; font-size: 15px; font-weight: 700; text-decoration: none;
+      letter-spacing: -0.3px; cursor: pointer;
+      display: flex; align-items: center; gap: 8px; transition: opacity 0.15s;
+    }
+    .nav-brand:hover { opacity: 0.8; }
+    .nav-brand-icon {
+      width: 28px; height: 28px; border-radius: 7px;
+      background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 800; color: white; letter-spacing: -0.5px; flex-shrink: 0;
+    }
+    .nav-brand-text { display: flex; flex-direction: column; line-height: 1; }
+    .nav-brand-name { font-size: 13px; font-weight: 700; color: white; }
+    .nav-brand-sub  { font-size: 10px; color: rgba(255,255,255,0.35); font-weight: 400; margin-top: 1px; }
+    .version-badge {
+      font-size: 10px; font-weight: 700; color: #64748b;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 2px 8px; border-radius: 20px; letter-spacing: 0.3px;
+    }
+    .nav-right { display: flex; align-items: center; gap: 4px; }
+    .nav-link {
+      color: #94a3b8; font-size: 13px; text-decoration: none;
+      padding: 6px 12px; border-radius: 6px; transition: all 0.15s; font-weight: 500;
+    }
+    .nav-link:hover { background: rgba(255,255,255,0.08); color: white; }
+    .nav-link.active { background: rgba(255,255,255,0.1); color: white; }
+    .dm-toggle {
+      width: 32px; height: 32px; border-radius: 7px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s; color: #94a3b8;
+    }
+    .dm-toggle:hover { background: rgba(255,255,255,0.14); color: white; }
+
+    /* ── PAGE ──────────────────────────────────────────────────── */
+    .container { max-width: 900px; margin: 0 auto; padding: 32px 24px 80px; }
+
+    .page-header { margin-bottom: 28px; }
+    .page-title { font-size: 22px; font-weight: 800; color: #1e293b; margin-bottom: 4px; }
+    .page-sub { font-size: 13px; color: #64748b; }
+
+    /* ── TABS ──────────────────────────────────────────────────── */
+    .tab-bar { display: flex; gap: 4px; margin-bottom: 24px; border-bottom: 1px solid #e2e8f0; }
+    .tab-btn {
+      font-size: 13px; font-weight: 600; padding: 10px 18px;
+      border: none; background: none; cursor: pointer; color: #64748b;
+      border-bottom: 2px solid transparent; margin-bottom: -1px;
+      transition: all 0.15s; font-family: inherit;
+    }
+    .tab-btn:hover { color: #1e293b; }
+    .tab-btn.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+
+    /* ── CARDS ─────────────────────────────────────────────────── */
+    .card {
+      background: white; border-radius: 12px; padding: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 16px;
+      border: 1px solid rgba(0,0,0,0.05);
+    }
+    .card-title { font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 16px; }
+
+    /* ── FORM ELEMENTS ─────────────────────────────────────────── */
+    .field { margin-bottom: 16px; }
+    .field-label {
+      display: block; font-size: 12px; font-weight: 600; color: #475569;
+      text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;
+    }
+    .field-input, .field-select, .field-textarea {
+      width: 100%; border: 1px solid #e2e8f0; border-radius: 8px;
+      padding: 10px 12px; font-size: 14px; font-family: inherit;
+      color: #1e293b; outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+      background: white;
+    }
+    .field-input:focus, .field-select:focus, .field-textarea:focus {
+      border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+    }
+    .field-textarea { resize: vertical; min-height: 100px; line-height: 1.6; }
+    .field-select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .field-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+    /* Checkboxes */
+    .check-group { display: flex; flex-wrap: wrap; gap: 8px; }
+    .check-item {
+      display: flex; align-items: center; gap: 6px;
+      padding: 7px 12px; border: 1px solid #e2e8f0; border-radius: 7px;
+      cursor: pointer; transition: all 0.15s; user-select: none;
+    }
+    .check-item:hover { background: #f8fafc; border-color: #94a3b8; }
+    .check-item input { display: none; }
+    .check-item .check-dot {
+      width: 14px; height: 14px; border-radius: 4px;
+      border: 1.5px solid #cbd5e1; background: white;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: all 0.15s;
+    }
+    .check-item input:checked + .check-dot {
+      background: #3b82f6; border-color: #3b82f6;
+    }
+    .check-item input:checked + .check-dot::after {
+      content: ''; display: block; width: 8px; height: 8px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpolyline points='2,6 5,9 10,3' stroke='white' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-size: contain; background-repeat: no-repeat;
+    }
+    .check-label { font-size: 13px; font-weight: 500; color: #475569; }
+
+    /* ── SUBMIT BUTTON ─────────────────────────────────────────── */
+    .btn-submit {
+      background: #3b82f6; color: white; border: none;
+      padding: 12px 28px; border-radius: 8px; font-size: 14px; font-weight: 700;
+      cursor: pointer; font-family: inherit; transition: background 0.15s;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .btn-submit:hover { background: #2563eb; }
+    .btn-submit:disabled { background: #93c5fd; cursor: not-allowed; }
+
+    /* Credit estimate */
+    .credit-estimate {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; color: #64748b; padding: 6px 12px;
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
+    }
+
+    /* ── UPLOAD ZONE ───────────────────────────────────────────── */
+    .upload-zone {
+      border: 2px dashed #cbd5e1; border-radius: 10px; padding: 36px 24px;
+      text-align: center; cursor: pointer; transition: all 0.2s;
+      background: #fafafa;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: #3b82f6; background: #eff6ff;
+    }
+    .upload-zone-icon { font-size: 28px; margin-bottom: 10px; }
+    .upload-zone-text { font-size: 13px; color: #475569; margin-bottom: 4px; font-weight: 500; }
+    .upload-zone-sub  { font-size: 11px; color: #94a3b8; }
+    .upload-zone-file { font-size: 12px; font-weight: 600; color: #3b82f6; margin-top: 8px; }
+    .upload-zone input[type="file"] { display: none; }
+
+    /* ── RESULTS AREA ──────────────────────────────────────────── */
+    .results-area { margin-top: 24px; }
+    .results-title {
+      font-size: 13px; font-weight: 700; color: #475569;
+      text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;
+    }
+
+    /* ── JOB CARDS ─────────────────────────────────────────────── */
+    .job-card {
+      background: white; border-radius: 10px; padding: 16px 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 10px;
+      border: 1px solid rgba(0,0,0,0.05);
+    }
+    .job-card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .job-model-badge {
+      font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px;
+      background: #ede9fe; color: #6d28d9;
+    }
+    .job-format-badge {
+      font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px;
+      background: #dbeafe; color: #1d4ed8;
+    }
+    .job-type-badge {
+      font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px;
+      background: #d1fae5; color: #065f46;
+    }
+    .job-status {
+      margin-left: auto; font-size: 11px; font-weight: 700; padding: 3px 9px;
+      border-radius: 20px;
+    }
+    .status-pending   { background: #fef3c7; color: #92400e; }
+    .status-generating{ background: #dbeafe; color: #1d4ed8; }
+    .status-done      { background: #dcfce7; color: #15803d; }
+    .status-generated { background: #dcfce7; color: #15803d; }
+    .status-failed    { background: #fee2e2; color: #b91c1c; }
+    .status-error     { background: #fee2e2; color: #b91c1c; }
+
+    .job-prompt { font-size: 12px; color: #64748b; line-height: 1.5; margin-bottom: 10px; }
+    .job-ts { font-size: 11px; color: #94a3b8; }
+
+    .job-media { margin-top: 12px; }
+    .job-media video { width: 100%; border-radius: 8px; max-height: 320px; }
+    .job-media img   { width: 100%; border-radius: 8px; max-height: 320px; object-fit: cover; }
+
+    .btn-download {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 11px; font-weight: 700; padding: 5px 12px; border-radius: 6px;
+      background: #f0fdf4; color: #16a34a; border: 1px solid #86efac;
+      text-decoration: none; margin-top: 8px; transition: background 0.15s;
+    }
+    .btn-download:hover { background: #dcfce7; }
+
+    /* Spinner */
+    .spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid rgba(59,130,246,0.2); border-top-color: #3b82f6;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── EMPTY STATE ───────────────────────────────────────────── */
+    .empty-state {
+      text-align: center; padding: 48px 0; color: #94a3b8;
+    }
+    .empty-state-icon { font-size: 32px; margin-bottom: 10px; }
+    .empty-state-text { font-size: 14px; font-weight: 600; color: #64748b; }
+
+    /* ── ERROR BANNER ──────────────────────────────────────────── */
+    .error-banner {
+      background: #fee2e2; border: 1px solid #fca5a5; color: #b91c1c;
+      border-radius: 8px; padding: 10px 14px; font-size: 13px;
+      margin-bottom: 12px; display: none;
+    }
+    .error-banner.visible { display: block; }
+
+    /* ── REF IMAGE PREVIEW ─────────────────────────────────────── */
+    .ref-preview { margin-top: 10px; display: none; }
+    .ref-preview img { max-height: 140px; border-radius: 6px; border: 1px solid #e2e8f0; }
+    .ref-preview.visible { display: block; }
+
+    /* ── DARK MODE ─────────────────────────────────────────────── */
+    body.dark { background: #0b1120; color: #cbd5e1; }
+    body.dark nav { background: #090f1c; }
+    body.dark .page-title { color: #e2e8f0; }
+    body.dark .page-sub { color: #475569; }
+    body.dark .card { background: #141e2e; box-shadow: 0 1px 3px rgba(0,0,0,0.4); border-color: rgba(255,255,255,0.05); }
+    body.dark .card-title { color: #e2e8f0; }
+    body.dark .field-label { color: #64748b; }
+    body.dark .field-input, body.dark .field-select, body.dark .field-textarea {
+      background: #1e293b; border-color: #334155; color: #e2e8f0;
+    }
+    body.dark .field-input::placeholder, body.dark .field-textarea::placeholder { color: #475569; }
+    body.dark .check-item { border-color: #334155; }
+    body.dark .check-item:hover { background: #1e293b; }
+    body.dark .check-label { color: #94a3b8; }
+    body.dark .check-item .check-dot { background: #1e293b; border-color: #475569; }
+    body.dark .upload-zone { border-color: #334155; background: #1e293b; }
+    body.dark .upload-zone:hover, body.dark .upload-zone.dragover { border-color: #3b82f6; background: #172038; }
+    body.dark .upload-zone-text { color: #94a3b8; }
+    body.dark .job-card { background: #141e2e; border-color: rgba(255,255,255,0.04); }
+    body.dark .job-prompt { color: #475569; }
+    body.dark .tab-bar { border-bottom-color: #1e293b; }
+    body.dark .tab-btn { color: #475569; }
+    body.dark .tab-btn:hover { color: #94a3b8; }
+    body.dark .tab-btn.active { color: #60a5fa; border-bottom-color: #60a5fa; }
+    body.dark .results-title { color: #475569; }
+    body.dark .credit-estimate { background: #1e293b; border-color: #334155; color: #64748b; }
+  </style>
+</head>
+<body>
+<nav>
+  <div class="nav-left">
+    <a href="/" class="nav-brand">
+      <div class="nav-brand-icon">SN</div>
+      <div class="nav-brand-text">
+        <span class="nav-brand-name">Studio N</span>
+        <span class="nav-brand-sub">by Marcus</span>
+      </div>
+    </a>
+    <span class="version-badge">v6.0</span>
+  </div>
+  <div class="nav-right">
+    <a href="/" class="nav-link">Brief</a>
+    <a href="/outputs" class="nav-link">Outputs</a>
+    <a href="/video-studio" class="nav-link active">Video Studio</a>
+    <button class="dm-toggle" onclick="toggleDark()" title="Toggle dark mode">
+      <svg id="dm-moon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg id="dm-sun"  width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    </button>
+    <a href="/logout" class="nav-link" style="color:#475569;">Sign out</a>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="page-header">
+    <div class="page-title">Video Studio</div>
+    <div class="page-sub">Generate AI videos, mimic reference footage, and produce brand visuals via Arcads.</div>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('generate', this)">Generate</button>
+    <button class="tab-btn" onclick="switchTab('mimic', this)">Mimic</button>
+    <button class="tab-btn" onclick="switchTab('brand', this)">Brand Visuals</button>
+  </div>
+
+  <!-- ── GENERATE TAB ─────────────────────────────────────────── -->
+  <div id="tab-generate">
+    <div class="card">
+      <div class="card-title">Text-to-Video Generation</div>
+
+      <div id="gen-error" class="error-banner"></div>
+
+      <div class="field">
+        <label class="field-label">Product ID</label>
+        <input type="text" class="field-input" id="gen-product-id" placeholder="Arcads Product ID (optional)">
+      </div>
+
+      <div class="field">
+        <label class="field-label">Model</label>
+        <select class="field-select" id="gen-model" onchange="updateCreditEstimate()">
+          <option value="seedance-2.0">Seedance 2.0</option>
+          <option value="sora-2">Sora 2</option>
+          <option value="veo-3.1">Veo 3.1</option>
+          <option value="kling-3.0">Kling 3.0</option>
+          <option value="grok-video">Grok Video</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Prompt</label>
+        <textarea class="field-textarea" id="gen-prompt" placeholder="Describe the video you want to create..." style="min-height:120px;"></textarea>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Format</label>
+        <div class="check-group">
+          <label class="check-item">
+            <input type="checkbox" name="gen-format" value="9:16" checked onchange="updateCreditEstimate()">
+            <span class="check-dot"></span>
+            <span class="check-label">9:16 Reels / Stories</span>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" name="gen-format" value="16:9" onchange="updateCreditEstimate()">
+            <span class="check-dot"></span>
+            <span class="check-label">16:9 YouTube / LinkedIn</span>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" name="gen-format" value="1:1" onchange="updateCreditEstimate()">
+            <span class="check-dot"></span>
+            <span class="check-label">1:1 Feed</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Variations</label>
+          <select class="field-select" id="gen-variations" onchange="updateCreditEstimate()">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Duration</label>
+          <select class="field-select" id="gen-duration" onchange="updateCreditEstimate()">
+            <option value="">Auto</option>
+            <option value="4">4 seconds</option>
+            <option value="8">8 seconds</option>
+            <option value="15">15 seconds</option>
+            <option value="20">20 seconds</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Client</label>
+        <select class="field-select" id="gen-client">
+          <option value="wibiz">WiBiz</option>
+          <option value="ai-living">AI Living</option>
+          <option value="charter">Club Charter</option>
+          <option value="other" selected>Other</option>
+        </select>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:12px;margin-top:8px;">
+        <button class="btn-submit" onclick="submitGenerate()" id="gen-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Generate Video
+        </button>
+        <span class="credit-estimate" id="gen-credit-estimate">Estimating credits...</span>
+      </div>
+    </div>
+
+    <div class="results-area" id="gen-results" style="display:none;">
+      <div class="results-title">Generated Jobs</div>
+      <div id="gen-jobs-list"></div>
+    </div>
+  </div>
+
+  <!-- ── MIMIC TAB ─────────────────────────────────────────────── -->
+  <div id="tab-mimic" style="display:none;">
+    <div class="card">
+      <div class="card-title">Reference Video Mimic</div>
+      <div id="mimic-error" class="error-banner"></div>
+
+      <div class="field">
+        <label class="field-label">Reference Video</label>
+        <div class="upload-zone" id="mimic-drop-zone" onclick="document.getElementById('mimic-file-input').click()">
+          <input type="file" id="mimic-file-input" accept=".mp4,.mov,.webm,.avi,video/*" onchange="onMimicFileSelect(event)">
+          <div class="upload-zone-icon">🎬</div>
+          <div class="upload-zone-text">Drop your reference video here, or click to browse</div>
+          <div class="upload-zone-sub">Supports MP4, MOV, WebM, AVI</div>
+          <div class="upload-zone-file" id="mimic-file-name"></div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Model</label>
+        <select class="field-select" id="mimic-model">
+          <option value="seedance-2.0">Seedance 2.0</option>
+          <option value="sora-2">Sora 2</option>
+          <option value="veo-3.1">Veo 3.1</option>
+          <option value="kling-3.0">Kling 3.0</option>
+          <option value="grok-video">Grok Video</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Additional Direction (optional)</label>
+        <textarea class="field-textarea" id="mimic-prompt" placeholder="Describe any changes from the reference — new product, different setting, adjusted tone..."></textarea>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Product ID</label>
+        <input type="text" class="field-input" id="mimic-product-id" placeholder="Arcads Product ID (optional)">
+      </div>
+
+      <div class="field">
+        <label class="field-label">Format</label>
+        <div class="check-group">
+          <label class="check-item">
+            <input type="checkbox" name="mimic-format" value="9:16" checked>
+            <span class="check-dot"></span>
+            <span class="check-label">9:16 Reels / Stories</span>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" name="mimic-format" value="16:9">
+            <span class="check-dot"></span>
+            <span class="check-label">16:9 YouTube / LinkedIn</span>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" name="mimic-format" value="1:1">
+            <span class="check-dot"></span>
+            <span class="check-label">1:1 Feed</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Variations</label>
+          <select class="field-select" id="mimic-variations">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Client</label>
+          <select class="field-select" id="mimic-client">
+            <option value="wibiz">WiBiz</option>
+            <option value="ai-living">AI Living</option>
+            <option value="charter">Club Charter</option>
+            <option value="other" selected>Other</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="margin-top:8px;">
+        <button class="btn-submit" onclick="submitMimic()" id="mimic-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Mimic Reference
+        </button>
+      </div>
+    </div>
+
+    <div class="results-area" id="mimic-results" style="display:none;">
+      <div class="results-title">Mimic Jobs</div>
+      <div id="mimic-jobs-list"></div>
+    </div>
+  </div>
+
+  <!-- ── BRAND VISUALS TAB ──────────────────────────────────────── -->
+  <div id="tab-brand" style="display:none;">
+    <div class="card">
+      <div class="card-title">Brand Visuals — Nano Banana</div>
+      <div id="brand-error" class="error-banner"></div>
+
+      <div class="field">
+        <label class="field-label">Product ID</label>
+        <input type="text" class="field-input" id="brand-product-id" placeholder="Arcads Product ID (optional)">
+      </div>
+
+      <div class="field">
+        <label class="field-label">Prompt</label>
+        <textarea class="field-textarea" id="brand-prompt" placeholder="Describe the brand visual you want — product placement, mood, background, style..."></textarea>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Reference Image (optional)</label>
+        <div class="upload-zone" id="brand-drop-zone" onclick="document.getElementById('brand-ref-input').click()">
+          <input type="file" id="brand-ref-input" accept=".png,.jpg,.jpeg,.webp,image/*" onchange="onBrandRefSelect(event)">
+          <div class="upload-zone-icon">🖼️</div>
+          <div class="upload-zone-text">Drop a reference image for style guidance</div>
+          <div class="upload-zone-sub">PNG, JPG, WebP</div>
+          <div class="upload-zone-file" id="brand-ref-name"></div>
+        </div>
+        <div class="ref-preview" id="brand-ref-preview">
+          <img id="brand-ref-img" src="" alt="Reference">
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Visual Types</label>
+        <div class="check-group">
+          <label class="check-item">
+            <input type="checkbox" name="brand-type" value="Hero Shot" checked>
+            <span class="check-dot"></span>
+            <span class="check-label">Hero Shot</span>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" name="brand-type" value="Lifestyle">
+            <span class="check-dot"></span>
+            <span class="check-label">Lifestyle</span>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" name="brand-type" value="Detail">
+            <span class="check-dot"></span>
+            <span class="check-label">Detail</span>
+          </label>
+        </div>
+      </div>
+
+      <div style="margin-top:8px;">
+        <button class="btn-submit" onclick="submitBrandVisuals()" id="brand-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          Generate Visuals
+        </button>
+      </div>
+    </div>
+
+    <div class="results-area" id="brand-results" style="display:none;">
+      <div class="results-title">Brand Visual Jobs</div>
+      <div id="brand-jobs-list"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Dark mode ─────────────────────────────────────────────────
+(function() {
+  if (localStorage.getItem('dm') === '1') {
+    document.body.classList.add('dark');
+    var m = document.getElementById('dm-moon'), s = document.getElementById('dm-sun');
+    if (m) m.style.display = 'none';
+    if (s) s.style.display = '';
+  }
+})();
+function toggleDark() {
+  var d = document.body.classList.toggle('dark');
+  localStorage.setItem('dm', d ? '1' : '0');
+  var m = document.getElementById('dm-moon'), s = document.getElementById('dm-sun');
+  if (m) m.style.display = d ? 'none' : '';
+  if (s) s.style.display = d ? '' : 'none';
+}
+
+// ── Tab switching ─────────────────────────────────────────────
+function switchTab(name, btn) {
+  ['generate','mimic','brand'].forEach(function(t) {
+    document.getElementById('tab-' + t).style.display = t === name ? '' : 'none';
+  });
+  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+}
+
+// ── Credit estimate ───────────────────────────────────────────
+var CREDIT_RATES = {
+  'seedance-2.0': 8,
+  'sora-2': 20,
+  'veo-3.1': 18,
+  'kling-3.0': 10,
+  'grok-video': 15,
+};
+function updateCreditEstimate() {
+  var model = document.getElementById('gen-model').value;
+  var variations = parseInt(document.getElementById('gen-variations').value) || 1;
+  var duration = parseInt(document.getElementById('gen-duration').value) || 8;
+  var formats = document.querySelectorAll('input[name="gen-format"]:checked').length || 1;
+  var rate = CREDIT_RATES[model] || 10;
+  var total = rate * variations * formats * (duration <= 8 ? 1 : 2);
+  var el = document.getElementById('gen-credit-estimate');
+  if (el) el.textContent = '~' + total + ' credits';
+}
+updateCreditEstimate();
+
+// ── Polling helpers ───────────────────────────────────────────
+var _pollers = {};
+
+function startPoller(arcadsId, cardId, mediaType) {
+  if (_pollers[arcadsId]) return;
+  _pollers[arcadsId] = setInterval(function() {
+    fetch('/api/video-studio/status/' + arcadsId)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var status = (data.status || 'pending').toLowerCase();
+        updateJobCard(cardId, status, data.url || '', mediaType);
+        if (status === 'done' || status === 'generated' || status === 'failed' || status === 'error') {
+          clearInterval(_pollers[arcadsId]);
+          delete _pollers[arcadsId];
+        }
+      })
+      .catch(function(e) { console.error('Poll error', e); });
+  }, 8000);
+}
+
+function startAssetPoller(assetId, cardId) {
+  if (_pollers[assetId]) return;
+  _pollers[assetId] = setInterval(function() {
+    fetch('/api/video-studio/asset/' + assetId)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var status = (data.status || data.assetStatus || 'pending').toLowerCase();
+        var url = data.url || data.assetUrl || '';
+        updateJobCard(cardId, status, url, 'image');
+        if (status === 'done' || status === 'generated' || status === 'failed' || status === 'error') {
+          clearInterval(_pollers[assetId]);
+          delete _pollers[assetId];
+        }
+      })
+      .catch(function(e) { console.error('Asset poll error', e); });
+  }, 8000);
+}
+
+function updateJobCard(cardId, status, url, mediaType) {
+  var card = document.getElementById(cardId);
+  if (!card) return;
+  var statusEl = card.querySelector('.job-status');
+  if (statusEl) {
+    statusEl.className = 'job-status status-' + status;
+    statusEl.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+  }
+  var mediaEl = card.querySelector('.job-media');
+  if (mediaEl && url) {
+    var spinEl = card.querySelector('.job-spinner');
+    if (spinEl) spinEl.remove();
+    if (mediaType === 'image') {
+      mediaEl.innerHTML = '<img src="' + url + '" alt="Generated visual"><br><a href="' + url + '" target="_blank" class="btn-download" download>Download Image</a>';
+    } else {
+      mediaEl.innerHTML = '<video src="' + url + '" controls></video><br><a href="' + url + '" target="_blank" class="btn-download" download>Download Video</a>';
+    }
+  }
+}
+
+function buildJobCard(opts) {
+  // opts: { id, arcadsId, model, format, jobType, prompt, mediaType }
+  var ts = new Date().toLocaleString();
+  var badgeType = opts.jobType === 'mimic' ? 'Mimic' : (opts.jobType === 'brand' ? 'Brand Visual' : 'Generate');
+  return '<div class="job-card" id="' + opts.id + '">' +
+    '<div class="job-card-top">' +
+    '<span class="job-model-badge">' + (opts.model || '') + '</span>' +
+    (opts.format ? '<span class="job-format-badge">' + opts.format + '</span>' : '') +
+    '<span class="job-type-badge">' + badgeType + '</span>' +
+    '<span class="job-status status-pending"><span class="spinner"></span> Pending</span>' +
+    '</div>' +
+    '<div class="job-prompt">' + (opts.prompt || '').substring(0, 160) + (opts.prompt && opts.prompt.length > 160 ? '...' : '') + '</div>' +
+    '<div class="job-ts">' + ts + ' · Arcads ID: ' + (opts.arcadsId || 'N/A') + '</div>' +
+    '<span class="job-spinner" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#64748b;margin-top:8px;"><span class="spinner"></span> Waiting for result...</span>' +
+    '<div class="job-media"></div>' +
+    '</div>';
+}
+
+// ── Generate ─────────────────────────────────────────────────
+async function submitGenerate() {
+  var btn = document.getElementById('gen-btn');
+  var errEl = document.getElementById('gen-error');
+  errEl.classList.remove('visible');
+
+  var prompt = document.getElementById('gen-prompt').value.trim();
+  if (!prompt) { showError('gen-error', 'Prompt is required.'); return; }
+
+  var formats = Array.from(document.querySelectorAll('input[name="gen-format"]:checked')).map(function(cb) { return cb.value; });
+  if (!formats.length) { showError('gen-error', 'Select at least one format.'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Generating...';
+
+  var payload = {
+    model: document.getElementById('gen-model').value,
+    prompt: prompt,
+    productId: document.getElementById('gen-product-id').value.trim(),
+    formats: formats,
+    variations: parseInt(document.getElementById('gen-variations').value),
+    client: document.getElementById('gen-client').value,
+    duration: document.getElementById('gen-duration').value || null,
+  };
+
+  try {
+    var r = await fetch('/api/video-studio/generate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    var data = await r.json();
+    if (data.error) { showError('gen-error', data.error); return; }
+
+    var listEl = document.getElementById('gen-jobs-list');
+    document.getElementById('gen-results').style.display = '';
+    (data.jobs || []).forEach(function(job) {
+      var cardId = 'gen-card-' + job.jobId;
+      listEl.insertAdjacentHTML('afterbegin', buildJobCard({
+        id: cardId, arcadsId: job.arcadsId, model: payload.model,
+        format: job.format, jobType: 'video', prompt: prompt, mediaType: 'video',
+      }));
+      if (job.arcadsId) startPoller(job.arcadsId, cardId, 'video');
+    });
+  } catch(e) {
+    showError('gen-error', 'Request failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Generate Video';
+  }
+}
+
+// ── Mimic file select ─────────────────────────────────────────
+var _mimicFile = null;
+function onMimicFileSelect(e) {
+  var f = e.target.files[0];
+  if (!f) return;
+  _mimicFile = f;
+  document.getElementById('mimic-file-name').textContent = f.name;
+}
+
+// Drag-drop for mimic
+(function() {
+  var zone = document.getElementById('mimic-drop-zone');
+  if (!zone) return;
+  zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', function() { zone.classList.remove('dragover'); });
+  zone.addEventListener('drop', function(e) {
+    e.preventDefault(); zone.classList.remove('dragover');
+    var f = e.dataTransfer.files[0];
+    if (f) { _mimicFile = f; document.getElementById('mimic-file-name').textContent = f.name; }
+  });
+})();
+
+async function submitMimic() {
+  var btn = document.getElementById('mimic-btn');
+  if (!_mimicFile) { showError('mimic-error', 'Please select a reference video first.'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Uploading & Generating...';
+
+  var formats = Array.from(document.querySelectorAll('input[name="mimic-format"]:checked')).map(function(cb) { return cb.value; });
+  if (!formats.length) formats = ['9:16'];
+
+  var fd = new FormData();
+  fd.append('referenceVideo', _mimicFile);
+  fd.append('prompt', document.getElementById('mimic-prompt').value.trim());
+  fd.append('model', document.getElementById('mimic-model').value);
+  fd.append('productId', document.getElementById('mimic-product-id').value.trim());
+  fd.append('client', document.getElementById('mimic-client').value);
+  fd.append('formats', JSON.stringify(formats));
+  fd.append('variations', document.getElementById('mimic-variations').value);
+
+  try {
+    var r = await fetch('/api/video-studio/mimic', { method: 'POST', body: fd });
+    var data = await r.json();
+    if (data.error) { showError('mimic-error', data.error); return; }
+
+    var listEl = document.getElementById('mimic-jobs-list');
+    document.getElementById('mimic-results').style.display = '';
+    (data.jobs || []).forEach(function(job) {
+      var cardId = 'mimic-card-' + job.jobId;
+      listEl.insertAdjacentHTML('afterbegin', buildJobCard({
+        id: cardId, arcadsId: job.arcadsId, model: document.getElementById('mimic-model').value,
+        format: job.format, jobType: 'mimic', prompt: document.getElementById('mimic-prompt').value || 'Reference mimic', mediaType: 'video',
+      }));
+      if (job.arcadsId) startPoller(job.arcadsId, cardId, 'video');
+    });
+  } catch(e) {
+    showError('mimic-error', 'Request failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Mimic Reference';
+  }
+}
+
+// ── Brand Visuals ────────────────────────────────────────────
+var _brandRefBase64 = null;
+function onBrandRefSelect(e) {
+  var f = e.target.files[0];
+  if (!f) return;
+  document.getElementById('brand-ref-name').textContent = f.name;
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    _brandRefBase64 = ev.target.result.split(',')[1];
+    var img = document.getElementById('brand-ref-img');
+    img.src = ev.target.result;
+    document.getElementById('brand-ref-preview').classList.add('visible');
+  };
+  reader.readAsDataURL(f);
+}
+
+(function() {
+  var zone = document.getElementById('brand-drop-zone');
+  if (!zone) return;
+  zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', function() { zone.classList.remove('dragover'); });
+  zone.addEventListener('drop', function(e) {
+    e.preventDefault(); zone.classList.remove('dragover');
+    var f = e.dataTransfer.files[0];
+    if (f) {
+      document.getElementById('brand-ref-name').textContent = f.name;
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        _brandRefBase64 = ev.target.result.split(',')[1];
+        var img = document.getElementById('brand-ref-img');
+        img.src = ev.target.result;
+        document.getElementById('brand-ref-preview').classList.add('visible');
+      };
+      reader.readAsDataURL(f);
+    }
+  });
+})();
+
+async function submitBrandVisuals() {
+  var btn = document.getElementById('brand-btn');
+  var prompt = document.getElementById('brand-prompt').value.trim();
+  if (!prompt) { showError('brand-error', 'Prompt is required.'); return; }
+
+  var types = Array.from(document.querySelectorAll('input[name="brand-type"]:checked')).map(function(cb) { return cb.value; });
+  if (!types.length) { showError('brand-error', 'Select at least one visual type.'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Generating...';
+
+  var listEl = document.getElementById('brand-jobs-list');
+  document.getElementById('brand-results').style.display = '';
+
+  var productId = document.getElementById('brand-product-id').value.trim();
+
+  try {
+    for (var i = 0; i < types.length; i++) {
+      var t = types[i];
+      var fullPrompt = prompt + ' — ' + t + ' shot';
+      var payload = {
+        model: 'nano-banana-2',
+        productId: productId,
+        prompt: fullPrompt,
+        referenceBase64: _brandRefBase64 || null,
+      };
+      var r = await fetch('/api/video-studio/brand-visual', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload),
+      });
+      var data = await r.json();
+      if (data.error) { showError('brand-error', data.error); continue; }
+
+      var cardId = 'brand-card-' + data.assetId;
+      listEl.insertAdjacentHTML('afterbegin', buildJobCard({
+        id: cardId, arcadsId: data.assetId, model: 'nano-banana-2',
+        format: t, jobType: 'brand', prompt: fullPrompt, mediaType: 'image',
+      }));
+      if (data.assetId) startAssetPoller(data.assetId, cardId);
+    }
+  } catch(e) {
+    showError('brand-error', 'Request failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg> Generate Visuals';
+  }
+}
+
+// ── Util ─────────────────────────────────────────────────────
+function showError(elId, msg) {
+  var el = document.getElementById(elId);
+  if (el) { el.textContent = msg; el.classList.add('visible'); }
+}
+</script>
+</body>
+</html>

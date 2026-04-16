@@ -153,19 +153,103 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 GITHUB_REPO         = os.getenv("GITHUB_REPO", "nickdcruz/nicklaus-marketing-agents")
 GITHUB_TOKEN        = os.environ.get("GITHUB_TOKEN")
-ANTHROPIC_API_KEY   = os.environ["ANTHROPIC_API_KEY"]
-HTTP_USER           = os.getenv("HTTP_USER", "admin")
+ANTHROPIC_API_KEY    = os.environ["ANTHROPIC_API_KEY"]
+ARCADS_API_KEY       = os.getenv("ARCADS_API_KEY", "")
+ARCADS_BASE_URL      = os.getenv("ARCADS_BASE_URL", "https://external-api.arcads.ai")
+ARCADS_CREDIT_BUDGET = float(os.getenv("ARCADS_CREDIT_BUDGET", "200"))
+HTTP_USER            = os.getenv("HTTP_USER", "admin")
 HTTP_PASS           = os.getenv("HTTP_PASS", "changeme")
 SESSION_SECRET      = os.getenv("SESSION_SECRET", secrets.token_hex(32))
 PORT                = int(os.environ.get("PORT", "5050"))
 APIFY_API_TOKEN     = os.environ.get("APIFY_API_TOKEN")
 BUFFER_ACCESS_TOKEN = os.environ.get("BUFFER_ACCESS_TOKEN")
 anthropic_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+
+# ── Arcads API helpers ────────────────────────────────────────────
+
+def _arcads_headers():
+    import base64
+    creds = base64.b64encode(f"{ARCADS_API_KEY}:".encode()).decode()
+    return {"Authorization": f"Basic {creds}", "Content-Type": "application/json"}
+
+async def arcads_get_products() -> list:
+    if not ARCADS_API_KEY:
+        return []
+    async with httpx.AsyncClient() as client:
+        r = await client.get(f"{ARCADS_BASE_URL}/v1/products", headers=_arcads_headers(), timeout=15)
+        r.raise_for_status()
+        return r.json() if isinstance(r.json(), list) else r.json().get("data", [])
+
+async def arcads_generate_video(payload: dict) -> dict:
+    async with httpx.AsyncClient() as client:
+        r = await client.post(f"{ARCADS_BASE_URL}/v2/videos/generate",
+                              json=payload, headers=_arcads_headers(), timeout=30)
+        r.raise_for_status()
+        return r.json()
+
+async def arcads_generate_image(payload: dict) -> dict:
+    async with httpx.AsyncClient() as client:
+        r = await client.post(f"{ARCADS_BASE_URL}/v2/images/generate",
+                              json=payload, headers=_arcads_headers(), timeout=30)
+        r.raise_for_status()
+        return r.json()
+
+async def arcads_poll_video(video_id: str) -> dict:
+    async with httpx.AsyncClient() as client:
+        r = await client.get(f"{ARCADS_BASE_URL}/v1/videos/{video_id}",
+                             headers=_arcads_headers(), timeout=15)
+        r.raise_for_status()
+        return r.json()
+
+async def arcads_poll_asset(asset_id: str) -> dict:
+    async with httpx.AsyncClient() as client:
+        r = await client.get(f"{ARCADS_BASE_URL}/v1/assets/{asset_id}",
+                             headers=_arcads_headers(), timeout=15)
+        r.raise_for_status()
+        return r.json()
+
+async def arcads_upload_file(file_bytes: bytes, filename: str, content_type: str) -> str:
+    """Upload file to Arcads presigned storage, return filePath for use in generation requests."""
+    async with httpx.AsyncClient() as client:
+        r = await client.post(f"{ARCADS_BASE_URL}/v1/uploads/presigned",
+                              json={"filename": filename, "contentType": content_type},
+                              headers=_arcads_headers(), timeout=15)
+        r.raise_for_status()
+        data = r.json()
+        upload_url = data.get("uploadUrl") or data.get("url", "")
+        file_path   = data.get("filePath") or data.get("path", "")
+        await client.put(upload_url, content=file_bytes,
+                         headers={"Content-Type": content_type}, timeout=120)
+        return file_path
+
+# SQLite table for video studio jobs
+def init_video_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS video_jobs (
+            id          TEXT PRIMARY KEY,
+            client      TEXT DEFAULT 'other',
+            job_type    TEXT DEFAULT 'video',
+            model       TEXT,
+            prompt      TEXT,
+            status      TEXT DEFAULT 'pending',
+            arcads_id   TEXT,
+            result_url  TEXT,
+            formats     TEXT DEFAULT '{}',
+            created_at  TEXT DEFAULT (datetime('now')),
+            error       TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+init_video_db()
+
 _agent_cache: dict = {}
 _jobs:        dict = {}
 _completed:   dict = {}
 
-VALID_AGENTS = {"callum", "priya", "dante", "suki", "felix", "nadia", "zara", "reeva"}
+VALID_AGENTS = {"callum", "priya", "dante", "suki", "felix", "nadia", "zara", "reeva", "kiara", "rex", "nova"}
 
 THIRD_PARTY_MESSAGES = {
     "video_production": (
@@ -210,7 +294,20 @@ After your analysis, end your response with a JSON block in this exact format �
 {"agents_needed": ["agent1", "agent2"], "briefs": {"agent1": "full brief text", "agent2": "full brief text"}}
 ```
 
-Valid agent names: callum, priya, dante, suki, felix, nadia, zara, reeva
+Valid agent names: callum, priya, dante, suki, felix, nadia, zara, reeva, kiara, rex, nova
+
+Agent specialisms:
+- callum: LinkedIn and long-form content
+- priya: social and short-form content
+- dante: video concepts and reels
+- suki: static visuals and design briefs
+- felix: decks and presentations
+- nadia: web copy and landing pages
+- zara: research and competitive intelligence
+- reeva: brand identity and strategy
+- kiara: AI video generation (Arcads/Seedance — use when actual video output is needed)
+- rex: Remotion programmatic video code
+- nova: Nano Banana brand visuals and stills
 
 ---
 """
@@ -1889,6 +1986,9 @@ AGENT_ROLES = {
     "felix":  "Decks & Presentations",
     "nadia":  "Web & Copy",
     "zara":   "Research & Intelligence",
+    "kiara":  "AI Video Generation",
+    "rex":    "Remotion & Motion Graphics",
+    "nova":   "Brand Visuals (Nano Banana)",
 }
 
 @app.get("/outputs", response_class=HTMLResponse)
@@ -2294,6 +2394,168 @@ async def view_output(filename: str):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# ── Video Studio ──────────────────────────────────────────────────
+
+@app.get("/video-studio", response_class=HTMLResponse)
+async def video_studio_page(request: Request):
+    return templates.TemplateResponse("video_studio.html", {"request": request})
+
+@app.get("/api/video-studio/products")
+async def vs_get_products():
+    try:
+        products = await arcads_get_products()
+        return {"products": products}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "products": []}, status_code=200)
+
+@app.post("/api/video-studio/generate")
+async def vs_generate(request: Request):
+    try:
+        body = await request.json()
+        client_val = body.get("client", "other")
+        model      = body.get("model", "seedance-2.0")
+        prompt     = body.get("prompt", "")
+        product_id = body.get("productId", "")
+        formats    = body.get("formats", ["9:16"])
+        variations = int(body.get("variations", 1))
+        duration   = body.get("duration")
+
+        if not ARCADS_API_KEY:
+            return JSONResponse({"error": "ARCADS_API_KEY not configured"}, status_code=400)
+        if not prompt:
+            return JSONResponse({"error": "Prompt is required"}, status_code=400)
+
+        job_id = str(uuid.uuid4())
+        jobs_created = []
+
+        for fmt in formats:
+            for _ in range(variations):
+                vid_job_id = str(uuid.uuid4())
+                payload = {
+                    "model": model,
+                    "productId": product_id,
+                    "prompt": prompt,
+                    "aspectRatio": fmt,
+                }
+                if duration:
+                    payload["duration"] = int(duration)
+
+                result = await arcads_generate_video(payload)
+                arcads_id = result.get("id") or result.get("videoId", "")
+
+                conn = sqlite3.connect(DB_PATH)
+                conn.execute("""
+                    INSERT INTO video_jobs (id, client, job_type, model, prompt, status, arcads_id, formats)
+                    VALUES (?,?,?,?,?,?,?,?)
+                """, (vid_job_id, client_val, "video", model, prompt, "pending", arcads_id, json.dumps({"format": fmt})))
+                conn.commit()
+                conn.close()
+                jobs_created.append({"jobId": vid_job_id, "arcadsId": arcads_id, "format": fmt})
+
+        return {"success": True, "jobs": jobs_created, "sessionId": job_id}
+    except Exception as e:
+        logging.error("Video generate error: %s", traceback.format_exc())
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/api/video-studio/status/{arcads_id}")
+async def vs_status(arcads_id: str):
+    try:
+        data = await arcads_poll_video(arcads_id)
+        status = data.get("videoStatus") or data.get("status", "pending")
+        url    = data.get("videoUrl") or data.get("url", "")
+        return {"arcadsId": arcads_id, "status": status, "url": url, "raw": data}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "status": "error"}, status_code=200)
+
+@app.post("/api/video-studio/mimic")
+async def vs_mimic(
+    referenceVideo: UploadFile = File(...),
+    prompt: str = Form(""),
+    model: str = Form("seedance-2.0"),
+    productId: str = Form(""),
+    client: str = Form("other"),
+    formats: str = Form('["9:16"]'),
+    variations: int = Form(1),
+):
+    try:
+        if not ARCADS_API_KEY:
+            return JSONResponse({"error": "ARCADS_API_KEY not configured"}, status_code=400)
+
+        file_bytes = await referenceVideo.read()
+        content_type = referenceVideo.content_type or "video/mp4"
+        file_path = await arcads_upload_file(file_bytes, referenceVideo.filename, content_type)
+
+        fmt_list = json.loads(formats) if isinstance(formats, str) else formats
+        jobs_created = []
+
+        for fmt in fmt_list:
+            for _ in range(variations):
+                vid_job_id = str(uuid.uuid4())
+                payload = {
+                    "model": model,
+                    "productId": productId,
+                    "prompt": prompt or "Recreate the style and mood of this reference video",
+                    "aspectRatio": fmt,
+                    "referenceVideos": [file_path],
+                }
+                result = await arcads_generate_video(payload)
+                arcads_id = result.get("id") or result.get("videoId", "")
+
+                conn = sqlite3.connect(DB_PATH)
+                conn.execute("""
+                    INSERT INTO video_jobs (id, client, job_type, model, prompt, status, arcads_id, formats)
+                    VALUES (?,?,?,?,?,?,?,?)
+                """, (vid_job_id, client, "mimic", model, prompt, "pending", arcads_id, json.dumps({"format": fmt})))
+                conn.commit()
+                conn.close()
+                jobs_created.append({"jobId": vid_job_id, "arcadsId": arcads_id, "format": fmt})
+
+        return {"success": True, "jobs": jobs_created, "filePath": file_path}
+    except Exception as e:
+        logging.error("Mimic error: %s", traceback.format_exc())
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/api/video-studio/brand-visual")
+async def vs_brand_visual(request: Request):
+    try:
+        body = await request.json()
+        if not ARCADS_API_KEY:
+            return JSONResponse({"error": "ARCADS_API_KEY not configured"}, status_code=400)
+
+        payload = {
+            "model": body.get("model", "nano-banana-2"),
+            "productId": body.get("productId", ""),
+            "prompt": body.get("prompt", ""),
+        }
+        if body.get("referenceBase64"):
+            payload["refImageAsBase64"] = body["referenceBase64"]
+
+        result = await arcads_generate_image(payload)
+        asset_id = result.get("id") or result.get("assetId", "")
+        return {"success": True, "assetId": asset_id, "raw": result}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/api/video-studio/asset/{asset_id}")
+async def vs_asset_status(asset_id: str):
+    try:
+        data = await arcads_poll_asset(asset_id)
+        return data
+    except Exception as e:
+        return JSONResponse({"error": str(e), "status": "error"}, status_code=200)
+
+@app.get("/api/video-studio/jobs")
+async def vs_list_jobs(client: str = "all"):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    if client == "all":
+        rows = conn.execute("SELECT * FROM video_jobs ORDER BY created_at DESC LIMIT 100").fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM video_jobs WHERE client=? ORDER BY created_at DESC LIMIT 100", (client,)).fetchall()
+    conn.close()
+    return {"jobs": [dict(r) for r in rows]}
 
 
 if __name__ == "__main__":

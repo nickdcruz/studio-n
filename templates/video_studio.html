@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Video Studio — Studio N v6.2</title>
+  <title>Video Studio — Studio N v6.3</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -156,6 +156,7 @@
 
     /* ── UPLOAD ZONE ───────────────────────────────────────────── */
     .upload-zone {
+      display: block; width: 100%;
       border: 2px dashed #cbd5e1; border-radius: 10px; padding: 36px 24px;
       text-align: center; cursor: pointer; transition: all 0.2s;
       background: #fafafa;
@@ -288,7 +289,7 @@
         <span class="nav-brand-sub">by Marcus</span>
       </div>
     </a>
-    <span class="version-badge">v6.2</span>
+    <span class="version-badge">v6.3</span>
   </div>
   <div class="nav-right">
     <a href="/" class="nav-link">Brief</a>
@@ -409,9 +410,15 @@
       </div>
     </div>
 
-    <div class="results-area" id="gen-results" style="display:none;">
+    <div class="results-area" id="gen-results">
       <div class="results-title">Generated Jobs</div>
-      <div id="gen-jobs-list"></div>
+      <div id="gen-jobs-list">
+        <div class="empty-state" id="gen-empty">
+          <div class="empty-state-icon">🎬</div>
+          <div class="empty-state-text">No generations yet</div>
+          <div style="font-size:12px;color:#94a3b8;margin-top:4px;">Generate a video above — results appear here and persist between sessions.</div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -502,9 +509,15 @@
       </div>
     </div>
 
-    <div class="results-area" id="mimic-results" style="display:none;">
+    <div class="results-area" id="mimic-results">
       <div class="results-title">Mimic Jobs</div>
-      <div id="mimic-jobs-list"></div>
+      <div id="mimic-jobs-list">
+        <div class="empty-state" id="mimic-empty">
+          <div class="empty-state-icon">🔄</div>
+          <div class="empty-state-text">No mimic jobs yet</div>
+          <div style="font-size:12px;color:#94a3b8;margin-top:4px;">Upload a reference video and click Mimic Reference.</div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -586,9 +599,15 @@
       </div>
     </div>
 
-    <div class="results-area" id="brand-results" style="display:none;">
+    <div class="results-area" id="brand-results">
       <div class="results-title">Brand Visual Jobs</div>
-      <div id="brand-jobs-list"></div>
+      <div id="brand-jobs-list">
+        <div class="empty-state" id="brand-empty">
+          <div class="empty-state-icon">🖼️</div>
+          <div class="empty-state-text">No brand visuals yet</div>
+          <div style="font-size:12px;color:#94a3b8;margin-top:4px;">Enter a prompt and click Generate Visuals.</div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -680,7 +699,8 @@ function startPoller(arcadsId, cardId, mediaType) {
         var status = (data.status || 'pending').toLowerCase();
         var url = data.url || '';
         updateJobCard(cardId, status, url, mediaType);
-        if (status === 'done' || status === 'generated' || status === 'completed' || status === 'failed' || status === 'error') {
+        var terminal = ['done','generated','completed','uploaded','failed','error'];
+        if (terminal.indexOf(status) !== -1) {
           clearInterval(_pollers[arcadsId]);
           delete _pollers[arcadsId];
           // Persist result to DB so it survives page refresh
@@ -695,13 +715,14 @@ function startPoller(arcadsId, cardId, mediaType) {
   }, 8000);
 }
 
-// ── Load saved jobs on page open ──────────────────────────────
-function loadSavedJobs() {
+// ── Load saved jobs on page open / refresh ────────────────────
+function loadSavedJobs(callback) {
   fetch('/api/video-studio/jobs')
     .then(function(r) { return r.json(); })
     .then(function(data) {
       var jobs = data.jobs || [];
-      if (!jobs.length) return;
+      var counts = {gen: 0, mimic: 0, brand: 0};
+
       jobs.forEach(function(job) {
         if (!job.arcads_id) return;
         var cardId = 'job-' + job.id;
@@ -714,33 +735,38 @@ function loadSavedJobs() {
           model: job.model, format: fmtData.format || '',
           jobType: job.job_type, prompt: job.prompt, mediaType: mediaType
         });
-        // Route to correct results container by job type
-        var listId = job.job_type === 'mimic' ? 'mimic-jobs-list'
-                   : job.job_type === 'brand'  ? 'brand-jobs-list'
-                   : 'gen-jobs-list';
-        var resultsId = job.job_type === 'mimic' ? 'mimic-results'
-                      : job.job_type === 'brand'  ? 'brand-results'
-                      : 'gen-results';
-        var resultsEl = document.getElementById(resultsId);
-        var listEl    = document.getElementById(listId);
-        if (resultsEl) resultsEl.style.display = '';
+        var listId   = job.job_type === 'mimic' ? 'mimic-jobs-list'
+                     : job.job_type === 'brand' ? 'brand-jobs-list'
+                     : 'gen-jobs-list';
+        var emptyId  = job.job_type === 'mimic' ? 'mimic-empty'
+                     : job.job_type === 'brand' ? 'brand-empty'
+                     : 'gen-empty';
+        var listEl   = document.getElementById(listId);
+        var emptyEl  = document.getElementById(emptyId);
+        if (emptyEl) emptyEl.style.display = 'none';
         if (listEl) listEl.insertAdjacentHTML('beforeend', card);
+
+        if (job.job_type === 'mimic') counts.mimic++;
+        else if (job.job_type === 'brand') counts.brand++;
+        else counts.gen++;
+
         var status = (job.status || 'pending').toLowerCase();
         var url = job.result_url || '';
-        if (status === 'done' || status === 'generated' || status === 'completed') {
+        if (status === 'done' || status === 'generated' || status === 'completed' || status === 'uploaded') {
           updateJobCard(cardId, status, url, mediaType);
-        } else if (status === 'pending' || status === 'generating') {
-          if (job.job_type === 'brand') {
-            startAssetPoller(job.arcads_id, cardId);
-          } else {
-            startPoller(job.arcads_id, cardId, mediaType);
-          }
+        } else if (status === 'pending' || status === 'created' || status === 'generating') {
+          startPoller(job.arcads_id, cardId, mediaType);
         } else {
           updateJobCard(cardId, status, url, mediaType);
         }
       });
+
+      if (callback) callback(counts);
     })
-    .catch(function(){});
+    .catch(function(e) {
+      console.error('loadSavedJobs error:', e);
+      if (callback) callback(null, e);
+    });
 }
 loadSavedJobs();
 
@@ -835,7 +861,7 @@ async function submitGenerate() {
     if (data.error) { showError('gen-error', data.error); return; }
 
     var listEl = document.getElementById('gen-jobs-list');
-    document.getElementById('gen-results').style.display = '';
+    var ge = document.getElementById('gen-empty'); if (ge) ge.style.display = 'none';
     (data.jobs || []).forEach(function(job) {
       var cardId = 'gen-card-' + job.jobId;
       listEl.insertAdjacentHTML('afterbegin', buildJobCard({
@@ -899,7 +925,7 @@ async function submitMimic() {
     if (data.error) { showError('mimic-error', data.error); return; }
 
     var listEl = document.getElementById('mimic-jobs-list');
-    document.getElementById('mimic-results').style.display = '';
+    var me = document.getElementById('mimic-empty'); if (me) me.style.display = 'none';
     (data.jobs || []).forEach(function(job) {
       var cardId = 'mimic-card-' + job.jobId;
       listEl.insertAdjacentHTML('afterbegin', buildJobCard({
@@ -966,7 +992,7 @@ async function submitBrandVisuals() {
   btn.innerHTML = '<span class="spinner"></span> Generating...';
 
   var listEl = document.getElementById('brand-jobs-list');
-  document.getElementById('brand-results').style.display = '';
+  var be2 = document.getElementById('brand-empty'); if (be2) be2.style.display = 'none';
 
   var productId = document.getElementById('brand-product-id').value.trim();
   var aspectRatio = document.getElementById('brand-aspect').value;
@@ -1012,7 +1038,7 @@ async function submitBrandVisuals() {
           id: cardId, arcadsId: data.assetId, model: 'nano-banana-2',
           format: aspectRatio, jobType: 'brand', prompt: fullPrompt, mediaType: 'image',
         }));
-        if (data.assetId) startAssetPoller(data.assetId, cardId);
+        if (data.assetId) startPoller(data.assetId, cardId, 'image');
       }
     }
   } catch(e) {
@@ -1025,16 +1051,30 @@ async function submitBrandVisuals() {
 
 // ── Refresh history ───────────────────────────────────────────
 function refreshHistory() {
-  // Clear existing job cards to avoid duplicates, then reload
+  var btn = event && event.currentTarget;
+  if (btn) { btn.disabled = true; btn.textContent = 'Refreshing...'; }
+  // Clear job cards (keep empty state divs)
   ['gen-jobs-list','mimic-jobs-list','brand-jobs-list'].forEach(function(id) {
-    var el = document.getElementById(id);
-    if (el) el.innerHTML = '';
+    var list = document.getElementById(id);
+    if (!list) return;
+    Array.from(list.querySelectorAll('.job-card')).forEach(function(c) { c.remove(); });
   });
-  ['gen-results','mimic-results','brand-results'].forEach(function(id) {
+  // Restore empty states
+  ['gen-empty','mimic-empty','brand-empty'].forEach(function(id) {
     var el = document.getElementById(id);
-    if (el) el.style.display = 'none';
+    if (el) el.style.display = '';
   });
-  loadSavedJobs();
+  loadSavedJobs(function(counts, err) {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Refresh History'; }
+    if (err) return;
+    var total = counts ? (counts.gen + counts.mimic + counts.brand) : 0;
+    var msg = total > 0 ? 'Loaded ' + total + ' job' + (total > 1 ? 's' : '') : 'No saved jobs found';
+    var toast = document.createElement('div');
+    toast.textContent = msg;
+    toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#1e293b;color:white;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;z-index:999;transition:opacity 0.4s;';
+    document.body.appendChild(toast);
+    setTimeout(function() { toast.style.opacity = '0'; setTimeout(function() { toast.remove(); }, 400); }, 2500);
+  });
 }
 
 // ── Util ─────────────────────────────────────────────────────

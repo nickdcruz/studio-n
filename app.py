@@ -2428,7 +2428,7 @@ async def vs_generate(request: Request):
         variations = int(body.get("variations", 1))
         duration   = body.get("duration")
 
-        if not ARCADS_API_KEY:
+        if not ARCADS_CLIENT_ID:
             return JSONResponse({"error": "ARCADS_API_KEY not configured"}, status_code=400)
         if not prompt:
             return JSONResponse({"error": "Prompt is required"}, status_code=400)
@@ -2486,7 +2486,7 @@ async def vs_mimic(
     variations: int = Form(1),
 ):
     try:
-        if not ARCADS_API_KEY:
+        if not ARCADS_CLIENT_ID:
             return JSONResponse({"error": "ARCADS_API_KEY not configured"}, status_code=400)
 
         file_bytes = await referenceVideo.read()
@@ -2527,7 +2527,7 @@ async def vs_mimic(
 async def vs_brand_visual(request: Request):
     try:
         body = await request.json()
-        if not ARCADS_API_KEY:
+        if not ARCADS_CLIENT_ID:
             return JSONResponse({"error": "ARCADS_API_KEY not configured"}, status_code=400)
 
         payload = {

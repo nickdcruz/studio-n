@@ -196,9 +196,12 @@ async def arcads_generate_video(payload: dict) -> dict:
 
 async def arcads_generate_image(payload: dict) -> dict:
     async with httpx.AsyncClient() as client:
+        logging.info("Arcads image payload: %s", json.dumps(payload))
         r = await client.post(f"{ARCADS_BASE_URL}/v2/images/generate",
                               json=payload, headers=_arcads_headers(), timeout=30)
-        r.raise_for_status()
+        logging.info("Arcads image response %d: %s", r.status_code, r.text[:400])
+        if not r.is_success:
+            raise Exception(f"Arcads {r.status_code}: {r.text[:300]}")
         return r.json()
 
 async def arcads_poll_video(video_id: str) -> dict:
@@ -2569,13 +2572,24 @@ async def vs_brand_visual(request: Request):
     try:
         body = await request.json()
         if not ARCADS_CLIENT_ID:
-            return JSONResponse({"error": "ARCADS_API_KEY not configured"}, status_code=400)
+            return JSONResponse({"error": "Arcads credentials not configured"}, status_code=400)
+
+        product_id = (body.get("productId") or "").strip()
+        if not product_id:
+            try:
+                products = await arcads_get_products()
+                if products:
+                    product_id = products[0].get("id", "")
+                    logging.info("Brand visual auto-resolved productId: %s", product_id)
+            except Exception as pe:
+                logging.warning("Brand visual product auto-resolve failed: %s", pe)
 
         payload = {
             "model": body.get("model", "nano-banana-2"),
-            "productId": body.get("productId", ""),
             "prompt": body.get("prompt", ""),
         }
+        if product_id:
+            payload["productId"] = product_id
         if body.get("referenceBase64"):
             payload["refImageAsBase64"] = body["referenceBase64"]
 
@@ -2583,6 +2597,7 @@ async def vs_brand_visual(request: Request):
         asset_id = result.get("id") or result.get("assetId", "")
         return {"success": True, "assetId": asset_id, "raw": result}
     except Exception as e:
+        logging.error("Brand visual error: %s", traceback.format_exc())
         return JSONResponse({"error": str(e)}, status_code=500)
 
 @app.get("/api/video-studio/asset/{asset_id}")
@@ -2622,20 +2637,25 @@ async def vs_save_result(request: Request):
     return {"ok": True}
 
 async def _bg_poll_pending():
-    """Background task: poll Arcads for pending video jobs and update DB."""
+    """Background task: poll Arcads for pending video/image jobs and update DB."""
     while True:
         await asyncio.sleep(30)
         try:
             conn = sqlite3.connect(DB_PATH)
             rows = conn.execute(
-                "SELECT arcads_id FROM video_jobs WHERE status='pending' AND arcads_id != '' LIMIT 20"
+                "SELECT arcads_id, job_type FROM video_jobs WHERE status='pending' AND arcads_id != '' LIMIT 20"
             ).fetchall()
             conn.close()
-            for (arcads_id,) in rows:
+            for (arcads_id, job_type) in rows:
                 try:
-                    data = await arcads_poll_video(arcads_id)
-                    status = (data.get("videoStatus") or data.get("status", "pending")).lower()
-                    url    = data.get("videoUrl") or data.get("url", "")
+                    if job_type == "brand":
+                        data   = await arcads_poll_asset(arcads_id)
+                        status = (data.get("assetStatus") or data.get("status", "pending")).lower()
+                        url    = data.get("assetUrl") or data.get("url", "")
+                    else:
+                        data   = await arcads_poll_video(arcads_id)
+                        status = (data.get("videoStatus") or data.get("status", "pending")).lower()
+                        url    = data.get("videoUrl") or data.get("url", "")
                     if status in ("done", "generated", "completed", "failed", "error"):
                         conn = sqlite3.connect(DB_PATH)
                         conn.execute(
@@ -2644,7 +2664,7 @@ async def _bg_poll_pending():
                         )
                         conn.commit()
                         conn.close()
-                        logging.info("BG poll: %s → %s  url=%s", arcads_id, status, url[:80] if url else "")
+                        logging.info("BG poll: %s [%s] → %s  url=%s", arcads_id, job_type, status, url[:80] if url else "")
                 except Exception as e:
                     logging.warning("BG poll error for %s: %s", arcads_id, e)
         except Exception as e:

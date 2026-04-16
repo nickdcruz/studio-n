@@ -189,9 +189,10 @@ async def arcads_generate_video(payload: dict) -> dict:
     async with httpx.AsyncClient() as client:
         logging.info("Arcads generate payload: %s", json.dumps(payload))
         r = await client.post(f"{ARCADS_BASE_URL}/v2/videos/generate",
-                              json=payload, headers=_arcads_headers(), timeout=30)
-        logging.info("Arcads generate response %s: %s", r.status_code, r.text[:500])
-        r.raise_for_status()
+                              json=payload, headers=_arcads_headers(), timeout=60)
+        logging.info("Arcads generate response %d: %s", r.status_code, r.text[:500])
+        if not r.is_success:
+            raise Exception(f"Arcads {r.status_code}: {r.text[:400]}")
         return r.json()
 
 async def arcads_generate_image(payload: dict) -> dict:
@@ -217,7 +218,8 @@ async def arcads_poll_asset(asset_id: str) -> dict:
     async with httpx.AsyncClient() as client:
         r = await client.get(f"{ARCADS_BASE_URL}/v1/assets/{asset_id}",
                              headers=_arcads_headers(), timeout=15)
-        r.raise_for_status()
+        if not r.is_success:
+            raise Exception(f"Asset poll {r.status_code}: {r.text[:200]}")
         return r.json()
 
 async def arcads_upload_file(file_bytes: bytes, filename: str, content_type: str) -> str:
@@ -235,10 +237,12 @@ async def arcads_upload_file(file_bytes: bytes, filename: str, content_type: str
         file_path  = data.get("filePath") or data.get("path", "")
         if not upload_url:
             raise Exception(f"No presigned URL in response: {data}")
-        # Step 2: PUT file to S3 presigned URL (no auth header)
+        # Step 2: PUT file directly to S3 — no Arcads auth header, Content-Type must match fileType
         upload_r = await client.put(upload_url, content=file_bytes,
                                     headers={"Content-Type": content_type}, timeout=120)
-        logging.info("S3 upload response %d", upload_r.status_code)
+        logging.info("S3 upload response %d (filePath=%s)", upload_r.status_code, file_path)
+        if not upload_r.is_success:
+            raise Exception(f"S3 upload failed {upload_r.status_code}: {upload_r.text[:200]}")
         return file_path
 
 # SQLite table for video studio jobs
@@ -2442,6 +2446,37 @@ async def vs_debug_auth():
         "status": r.status_code,
         "response": r.text[:200],
     }
+
+@app.get("/api/video-studio/debug-upload")
+async def vs_debug_upload():
+    """Test the full presigned upload pipeline with a tiny dummy file."""
+    try:
+        dummy = b"test-upload-" + str(uuid.uuid4()).encode()
+        import base64
+        creds = base64.b64encode(f"{ARCADS_CLIENT_ID}:{ARCADS_CLIENT_SECRET}".encode()).decode()
+        async with httpx.AsyncClient() as client:
+            # Step 1: get presigned URL
+            r1 = await client.post(f"{ARCADS_BASE_URL}/v1/file-upload/get-presigned-url",
+                                   json={"fileType": "video/mp4"},
+                                   headers={"Authorization": f"Basic {creds}", "Content-Type": "application/json"},
+                                   timeout=15)
+            if not r1.is_success:
+                return {"step": "presigned", "status": r1.status_code, "body": r1.text[:400]}
+            data = r1.json()
+            upload_url = data.get("presignedUrl") or ""
+            file_path  = data.get("filePath") or ""
+            # Step 2: PUT dummy file
+            r2 = await client.put(upload_url, content=dummy,
+                                  headers={"Content-Type": "video/mp4"}, timeout=30)
+            return {
+                "step": "complete",
+                "presigned_status": r1.status_code,
+                "s3_put_status": r2.status_code,
+                "filePath": file_path,
+                "presigned_response_keys": list(data.keys()),
+            }
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.get("/api/video-studio/products")
 async def vs_get_products():

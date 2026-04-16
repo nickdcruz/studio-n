@@ -2442,11 +2442,13 @@ async def vs_generate(request: Request):
         if not product_id:
             try:
                 products = await arcads_get_products()
+                logging.info("Auto-resolve products: %s", products)
                 if products:
                     product_id = products[0].get("id", "")
-            except Exception:
-                pass
+            except Exception as pe:
+                logging.error("Auto-resolve product error: %s", pe)
 
+        logging.info("Using productId: %s", product_id)
         if not product_id:
             return JSONResponse({"error": "No product ID — add a product in your Arcads account first"}, status_code=400)
 

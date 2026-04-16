@@ -2598,11 +2598,61 @@ async def vs_list_jobs(client: str = "all"):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     if client == "all":
-        rows = conn.execute("SELECT * FROM video_jobs ORDER BY created_at DESC LIMIT 100").fetchall()
+        rows = conn.execute("SELECT * FROM video_jobs ORDER BY created_at DESC LIMIT 50").fetchall()
     else:
-        rows = conn.execute("SELECT * FROM video_jobs WHERE client=? ORDER BY created_at DESC LIMIT 100", (client,)).fetchall()
+        rows = conn.execute("SELECT * FROM video_jobs WHERE client=? ORDER BY created_at DESC LIMIT 50", (client,)).fetchall()
     conn.close()
     return {"jobs": [dict(r) for r in rows]}
+
+@app.post("/api/video-studio/save-result")
+async def vs_save_result(request: Request):
+    """Called by frontend when polling completes — saves result URL to DB."""
+    body = await request.json()
+    arcads_id  = body.get("arcadsId", "")
+    status     = body.get("status", "")
+    result_url = body.get("url", "")
+    if arcads_id:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            "UPDATE video_jobs SET status=?, result_url=? WHERE arcads_id=?",
+            (status, result_url, arcads_id)
+        )
+        conn.commit()
+        conn.close()
+    return {"ok": True}
+
+async def _bg_poll_pending():
+    """Background task: poll Arcads for pending video jobs and update DB."""
+    while True:
+        await asyncio.sleep(30)
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            rows = conn.execute(
+                "SELECT arcads_id FROM video_jobs WHERE status='pending' AND arcads_id != '' LIMIT 20"
+            ).fetchall()
+            conn.close()
+            for (arcads_id,) in rows:
+                try:
+                    data = await arcads_poll_video(arcads_id)
+                    status = (data.get("videoStatus") or data.get("status", "pending")).lower()
+                    url    = data.get("videoUrl") or data.get("url", "")
+                    if status in ("done", "generated", "completed", "failed", "error"):
+                        conn = sqlite3.connect(DB_PATH)
+                        conn.execute(
+                            "UPDATE video_jobs SET status=?, result_url=? WHERE arcads_id=?",
+                            (status, url, arcads_id)
+                        )
+                        conn.commit()
+                        conn.close()
+                        logging.info("BG poll: %s → %s  url=%s", arcads_id, status, url[:80] if url else "")
+                except Exception as e:
+                    logging.warning("BG poll error for %s: %s", arcads_id, e)
+        except Exception as e:
+            logging.warning("BG poll loop error: %s", e)
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(_bg_poll_pending())
 
 
 if __name__ == "__main__":

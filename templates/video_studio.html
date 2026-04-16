@@ -653,15 +653,56 @@ function startPoller(arcadsId, cardId, mediaType) {
       .then(function(r) { return r.json(); })
       .then(function(data) {
         var status = (data.status || 'pending').toLowerCase();
-        updateJobCard(cardId, status, data.url || '', mediaType);
-        if (status === 'done' || status === 'generated' || status === 'failed' || status === 'error') {
+        var url = data.url || '';
+        updateJobCard(cardId, status, url, mediaType);
+        if (status === 'done' || status === 'generated' || status === 'completed' || status === 'failed' || status === 'error') {
           clearInterval(_pollers[arcadsId]);
           delete _pollers[arcadsId];
+          // Persist result to DB so it survives page refresh
+          fetch('/api/video-studio/save-result', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({arcadsId: arcadsId, status: status, url: url})
+          }).catch(function(){});
         }
       })
       .catch(function(e) { console.error('Poll error', e); });
   }, 8000);
 }
+
+// ── Load saved jobs on page open ──────────────────────────────
+(function loadSavedJobs() {
+  fetch('/api/video-studio/jobs')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var jobs = data.jobs || [];
+      var resultsEl = document.getElementById('gen-results');
+      jobs.forEach(function(job) {
+        if (!job.arcads_id) return;
+        var cardId = 'job-' + job.id;
+        if (document.getElementById(cardId)) return;
+        var mediaType = job.job_type === 'brand' ? 'image' : 'video';
+        var fmtData = {};
+        try { fmtData = JSON.parse(job.formats || '{}'); } catch(e){}
+        var card = buildJobCard({
+          id: cardId, arcadsId: job.arcads_id,
+          model: job.model, format: fmtData.format || '',
+          jobType: job.job_type, prompt: job.prompt, mediaType: mediaType
+        });
+        if (resultsEl) resultsEl.insertAdjacentHTML('afterbegin', card);
+        var status = (job.status || 'pending').toLowerCase();
+        var url = job.result_url || '';
+        if (status === 'done' || status === 'generated' || status === 'completed') {
+          updateJobCard(cardId, status, url, mediaType);
+        } else if (status === 'pending') {
+          startPoller(job.arcads_id, cardId, mediaType);
+        } else {
+          updateJobCard(cardId, status, url, mediaType);
+        }
+      });
+    })
+    .catch(function(){});
+})();
 
 function startAssetPoller(assetId, cardId) {
   if (_pollers[assetId]) return;

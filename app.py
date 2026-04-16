@@ -184,8 +184,10 @@ async def arcads_get_products() -> list:
 
 async def arcads_generate_video(payload: dict) -> dict:
     async with httpx.AsyncClient() as client:
+        logging.info("Arcads generate payload: %s", json.dumps(payload))
         r = await client.post(f"{ARCADS_BASE_URL}/v2/videos/generate",
                               json=payload, headers=_arcads_headers(), timeout=30)
+        logging.info("Arcads generate response %s: %s", r.status_code, r.text[:500])
         r.raise_for_status()
         return r.json()
 

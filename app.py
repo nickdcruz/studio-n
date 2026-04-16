@@ -2403,7 +2403,7 @@ async def health():
 @app.get("/video-studio", response_class=HTMLResponse)
 async def video_studio_page(request: Request):
     try:
-        return templates.TemplateResponse("video_studio.html", {"request": request})
+        return templates.TemplateResponse(request=request, name="video_studio.html")
     except Exception as e:
         logging.error("video_studio render error: %s", traceback.format_exc())
         return HTMLResponse(f"<pre>Error: {e}</pre>", status_code=500)

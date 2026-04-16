@@ -2413,6 +2413,24 @@ async def video_studio_page(request: Request):
         logging.error("video_studio render error: %s", traceback.format_exc())
         return HTMLResponse(f"<pre>Error: {e}</pre>", status_code=500)
 
+@app.get("/api/video-studio/debug-auth")
+async def vs_debug_auth():
+    cid = ARCADS_CLIENT_ID
+    sec = ARCADS_CLIENT_SECRET
+    masked = sec[:3] + "..." + sec[-3:] if len(sec) > 6 else "TOO_SHORT"
+    import base64
+    creds = base64.b64encode(f"{cid}:{sec}".encode()).decode()
+    async with httpx.AsyncClient() as client:
+        r = await client.get(f"{ARCADS_BASE_URL}/v1/products",
+                             headers={"Authorization": f"Basic {creds}"}, timeout=15)
+    return {
+        "client_id_len": len(cid),
+        "secret_len": len(sec),
+        "secret_masked": masked,
+        "status": r.status_code,
+        "response": r.text[:200],
+    }
+
 @app.get("/api/video-studio/products")
 async def vs_get_products():
     try:

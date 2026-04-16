@@ -677,6 +677,8 @@ function startPoller(arcadsId, cardId, mediaType) {
     .then(function(data) {
       var jobs = data.jobs || [];
       var resultsEl = document.getElementById('gen-results');
+      if (!jobs.length) return;
+      if (resultsEl) resultsEl.style.display = '';
       jobs.forEach(function(job) {
         if (!job.arcads_id) return;
         var cardId = 'job-' + job.id;
@@ -689,7 +691,7 @@ function startPoller(arcadsId, cardId, mediaType) {
           model: job.model, format: fmtData.format || '',
           jobType: job.job_type, prompt: job.prompt, mediaType: mediaType
         });
-        if (resultsEl) resultsEl.insertAdjacentHTML('afterbegin', card);
+        if (resultsEl) resultsEl.insertAdjacentHTML('beforeend', card);
         var status = (job.status || 'pending').toLowerCase();
         var url = job.result_url || '';
         if (status === 'done' || status === 'generated' || status === 'completed') {

@@ -586,6 +586,34 @@ function toggleDark() {
   if (s) s.style.display = d ? '' : 'none';
 }
 
+// ── Auto-load products ────────────────────────────────────────
+(function loadProducts() {
+  fetch('/api/video-studio/products')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var products = data.products || [];
+      if (!products.length) return;
+      var ids = ['gen-product-id', 'mimic-product-id', 'brand-product-id'];
+      ids.forEach(function(id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        // Replace text input with a select dropdown
+        var sel = document.createElement('select');
+        sel.className = el.className;
+        sel.id = el.id;
+        sel.style.cssText = el.style.cssText;
+        products.forEach(function(p) {
+          var opt = document.createElement('option');
+          opt.value = p.id;
+          opt.textContent = p.name || p.id;
+          sel.appendChild(opt);
+        });
+        el.parentNode.replaceChild(sel, el);
+      });
+    })
+    .catch(function() {}); // silently fail — user can type ID manually
+})();
+
 // ── Tab switching ─────────────────────────────────────────────
 function switchTab(name, btn) {
   ['generate','mimic','brand'].forEach(function(t) {

@@ -180,7 +180,10 @@ async def arcads_get_products() -> list:
     async with httpx.AsyncClient() as client:
         r = await client.get(f"{ARCADS_BASE_URL}/v1/products", headers=_arcads_headers(), timeout=15)
         r.raise_for_status()
-        return r.json() if isinstance(r.json(), list) else r.json().get("data", [])
+        data = r.json()
+        if isinstance(data, list):
+            return data
+        return data.get("items") or data.get("data") or []
 
 async def arcads_generate_video(payload: dict) -> dict:
     async with httpx.AsyncClient() as client:

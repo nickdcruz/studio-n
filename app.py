@@ -2431,9 +2431,21 @@ async def vs_generate(request: Request):
         duration   = body.get("duration")
 
         if not ARCADS_CLIENT_ID:
-            return JSONResponse({"error": "ARCADS_API_KEY not configured"}, status_code=400)
+            return JSONResponse({"error": "ARCADS_CLIENT_ID not configured"}, status_code=400)
         if not prompt:
             return JSONResponse({"error": "Prompt is required"}, status_code=400)
+
+        # Auto-resolve product ID if not provided
+        if not product_id:
+            try:
+                products = await arcads_get_products()
+                if products:
+                    product_id = products[0].get("id", "")
+            except Exception:
+                pass
+
+        if not product_id:
+            return JSONResponse({"error": "No product ID — add a product in your Arcads account first"}, status_code=400)
 
         job_id = str(uuid.uuid4())
         jobs_created = []

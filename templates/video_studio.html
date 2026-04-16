@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Video Studio — Studio N v6.3</title>
+  <title>Video Studio — Studio N v6.4</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -289,7 +289,7 @@
         <span class="nav-brand-sub">by Marcus</span>
       </div>
     </a>
-    <span class="version-badge">v6.3</span>
+    <span class="version-badge">v6.4</span>
   </div>
   <div class="nav-right">
     <a href="/" class="nav-link">Brief</a>
@@ -801,11 +801,39 @@ function updateJobCard(cardId, status, url, mediaType) {
     var spinEl = card.querySelector('.job-spinner');
     if (spinEl) spinEl.remove();
     if (mediaType === 'image') {
-      mediaEl.innerHTML = '<img src="' + url + '" alt="Generated visual"><br><a href="' + url + '" target="_blank" class="btn-download" download>Download Image</a>';
+      showImageWithRetry(mediaEl, url, 0);
     } else {
-      mediaEl.innerHTML = '<video src="' + url + '" controls></video><br><a href="' + url + '" target="_blank" class="btn-download" download>Download Video</a>';
+      mediaEl.innerHTML = '<video src="' + url + '" controls style="width:100%;border-radius:8px;max-height:320px;"></video><br><a href="' + url + '" target="_blank" class="btn-download" download>Download Video</a>';
     }
   }
+}
+
+// Arcads marks status=generated before S3 write completes — retry on 404/error
+function showImageWithRetry(mediaEl, url, attempt) {
+  var MAX = 8;
+  var DELAY_MS = [3000, 5000, 8000, 10000, 12000, 15000, 20000, 30000];
+  var img = document.createElement('img');
+  img.src = url;
+  img.alt = 'Generated visual';
+  img.style.cssText = 'width:100%;border-radius:8px;max-height:320px;object-fit:cover;display:block;';
+  img.onload = function() {
+    mediaEl.innerHTML = '';
+    mediaEl.appendChild(img);
+    var dl = document.createElement('a');
+    dl.href = url; dl.target = '_blank'; dl.className = 'btn-download'; dl.download = '';
+    dl.innerHTML = '&#11123; Download Image';
+    mediaEl.appendChild(document.createElement('br'));
+    mediaEl.appendChild(dl);
+  };
+  img.onerror = function() {
+    if (attempt < MAX) {
+      var wait = DELAY_MS[attempt] || 30000;
+      mediaEl.innerHTML = '<span style="font-size:12px;color:#94a3b8;">Image processing — retrying in ' + Math.round(wait/1000) + 's (attempt ' + (attempt+1) + '/' + MAX + ')</span>';
+      setTimeout(function() { showImageWithRetry(mediaEl, url, attempt + 1); }, wait);
+    } else {
+      mediaEl.innerHTML = '<span style="font-size:12px;color:#ef4444;">Image unavailable. <a href="' + url + '" target="_blank" style="color:#3b82f6;">Try direct link</a></span>';
+    }
+  };
 }
 
 function buildJobCard(opts) {

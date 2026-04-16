@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Video Studio — Studio N v6.4</title>
+  <title>Video Studio — Studio N v6.5</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -289,7 +289,7 @@
         <span class="nav-brand-sub">by Marcus</span>
       </div>
     </a>
-    <span class="version-badge">v6.4</span>
+    <span class="version-badge">v6.5</span>
   </div>
   <div class="nav-right">
     <a href="/" class="nav-link">Brief</a>
@@ -425,28 +425,34 @@
   <!-- ── MIMIC TAB ─────────────────────────────────────────────── -->
   <div id="tab-mimic" style="display:none;">
     <div class="card">
-      <div class="card-title">Reference Video Mimic</div>
+      <div class="card-title">Reference Mimic</div>
       <div id="mimic-error" class="error-banner"></div>
 
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;font-size:12px;color:#1d4ed8;margin-bottom:16px;line-height:1.5;">
+        <strong>How to use:</strong> Upload a reference image (screenshot a frame from your video) — Kling 3.0, Sora 2, and Veo 3.1 use it as a visual anchor.
+        Seedance 2.0 supports direct video upload for true video-to-video (may be unstable on some accounts).
+      </div>
+
       <div class="field">
-        <label class="field-label">Reference Video</label>
+        <label class="field-label">Reference Image or Video</label>
         <label class="upload-zone" id="mimic-drop-zone" for="mimic-file-input">
-          <input type="file" id="mimic-file-input" accept=".mp4,.mov,.webm,.avi,video/*" onchange="onMimicFileSelect(event)" style="display:none;">
-          <div class="upload-zone-icon">🎬</div>
-          <div class="upload-zone-text">Click to browse or drop your reference video here</div>
-          <div class="upload-zone-sub">Supports MP4, MOV, WebM, AVI</div>
+          <input type="file" id="mimic-file-input" accept="image/*,video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm,.jpg,.jpeg,.png,.webp" onchange="onMimicFileSelect(event)" style="display:none;">
+          <div class="upload-zone-icon" id="mimic-zone-icon">📎</div>
+          <div class="upload-zone-text">Click to browse or drop a reference image or video</div>
+          <div class="upload-zone-sub">Image: JPG, PNG, WebP — Video: MP4, MOV, WebM (Seedance 2.0 only)</div>
           <div class="upload-zone-file" id="mimic-file-name"></div>
         </label>
       </div>
 
       <div class="field">
         <label class="field-label">Model</label>
-        <select class="field-select" id="mimic-model">
-          <option value="seedance-2.0" selected>Seedance 2.0 (video-to-video)</option>
-          <option value="kling-3.0">Kling 3.0</option>
-          <option value="sora2">Sora 2</option>
-          <option value="veo31">Veo 3.1</option>
-          <option value="grok-video">Grok Video</option>
+        <select class="field-select" id="mimic-model" onchange="updateMimicHint()">
+          <option value="kling-3.0" selected>Kling 3.0 — uses image as start frame</option>
+          <option value="veo31">Veo 3.1 — uses image as start frame</option>
+          <option value="sora2">Sora 2 — uses image as reference</option>
+          <option value="grok-video">Grok Video — uses image as start frame</option>
+          <option value="seedance-2.0">Seedance 2.0 — video-to-video (upload a video; may be unstable)</option>
+          <option value="seedance">Seedance — uses image as reference</option>
         </select>
       </div>
 
@@ -913,6 +919,19 @@ function onMimicFileSelect(e) {
   if (!f) return;
   _mimicFile = f;
   document.getElementById('mimic-file-name').textContent = f.name;
+  var icon = document.getElementById('mimic-zone-icon');
+  if (icon) icon.textContent = f.type.startsWith('video/') ? '🎬' : '🖼️';
+}
+function updateMimicHint() {
+  var model = document.getElementById('mimic-model').value;
+  var zone  = document.getElementById('mimic-drop-zone');
+  var sub   = zone && zone.querySelector('.upload-zone-sub');
+  if (!sub) return;
+  if (model === 'seedance-2.0') {
+    sub.textContent = 'Upload a video (MP4, MOV, WebM) for video-to-video, or an image for reference';
+  } else {
+    sub.textContent = 'Upload an image (JPG, PNG, WebP) — screenshot a frame from your reference video';
+  }
 }
 
 // Drag-drop for mimic
@@ -924,7 +943,12 @@ function onMimicFileSelect(e) {
   zone.addEventListener('drop', function(e) {
     e.preventDefault(); zone.classList.remove('dragover');
     var f = e.dataTransfer.files[0];
-    if (f) { _mimicFile = f; document.getElementById('mimic-file-name').textContent = f.name; }
+    if (f) {
+      _mimicFile = f;
+      document.getElementById('mimic-file-name').textContent = f.name;
+      var icon = document.getElementById('mimic-zone-icon');
+      if (icon) icon.textContent = f.type.startsWith('video/') ? '🎬' : '🖼️';
+    }
   });
 })();
 
@@ -939,7 +963,7 @@ async function submitMimic() {
   if (!formats.length) formats = ['9:16'];
 
   var fd = new FormData();
-  fd.append('referenceVideo', _mimicFile);
+  fd.append('referenceFile', _mimicFile);
   fd.append('prompt', document.getElementById('mimic-prompt').value.trim());
   fd.append('model', document.getElementById('mimic-model').value);
   fd.append('productId', document.getElementById('mimic-product-id').value.trim());

@@ -2567,9 +2567,9 @@ async def vs_status(arcads_id: str):
 
 @app.post("/api/video-studio/mimic")
 async def vs_mimic(
-    referenceVideo: UploadFile = File(...),
+    referenceFile: UploadFile = File(...),
     prompt: str = Form(""),
-    model: str = Form("seedance-2.0"),
+    model: str = Form("kling-3.0"),
     productId: str = Form(""),
     client: str = Form("other"),
     formats: str = Form('["9:16"]'),
@@ -2577,11 +2577,23 @@ async def vs_mimic(
 ):
     try:
         if not ARCADS_CLIENT_ID:
-            return JSONResponse({"error": "ARCADS_API_KEY not configured"}, status_code=400)
+            return JSONResponse({"error": "Arcads credentials not configured"}, status_code=400)
 
-        file_bytes = await referenceVideo.read()
-        content_type = referenceVideo.content_type or "video/mp4"
-        file_path = await arcads_upload_file(file_bytes, referenceVideo.filename, content_type)
+        file_bytes    = await referenceFile.read()
+        content_type  = referenceFile.content_type or "video/mp4"
+        is_video      = content_type.startswith("video/")
+        file_path     = await arcads_upload_file(file_bytes, referenceFile.filename, content_type)
+        logging.info("Mimic upload complete: filePath=%s model=%s is_video=%s", file_path, model, is_video)
+
+        # Auto-resolve productId
+        product_id = (productId or "").strip()
+        if not product_id:
+            try:
+                products = await arcads_get_products()
+                if products:
+                    product_id = products[0].get("id", "")
+            except Exception:
+                pass
 
         fmt_list = json.loads(formats) if isinstance(formats, str) else formats
         jobs_created = []
@@ -2591,11 +2603,26 @@ async def vs_mimic(
                 vid_job_id = str(uuid.uuid4())
                 payload = {
                     "model": model,
-                    "productId": productId,
-                    "prompt": prompt or "Recreate the style and mood of this reference video",
+                    "prompt": prompt or "Recreate the visual style, mood, and composition of this reference",
                     "aspectRatio": fmt,
-                    "referenceVideos": [file_path],
                 }
+                if product_id:
+                    payload["productId"] = product_id
+
+                # Route reference file to the correct field based on model + file type
+                STARTFRAME_MODELS = {"kling-3.0", "kling-2.6", "veo31", "grok-video"}
+                REFIMAGE_MODELS   = {"sora2", "sora2-pro", "seedance"}
+                if is_video and model == "seedance-2.0":
+                    payload["referenceVideos"] = [file_path]
+                elif model in STARTFRAME_MODELS:
+                    payload["startFrame"] = file_path
+                elif model in REFIMAGE_MODELS or model == "seedance-2.0":
+                    payload["referenceImages"] = [file_path]
+                else:
+                    # Fallback: try startFrame for unknown models that support it
+                    payload["startFrame"] = file_path
+
+                logging.info("Mimic payload: %s", json.dumps(payload))
                 result = await arcads_generate_video(payload)
                 arcads_id = result.get("id") or result.get("videoId", "")
 

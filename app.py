@@ -169,6 +169,10 @@ anthropic_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
 def _arcads_headers():
     import base64
+    # Support both Bearer (ARCADS_AUTH_TYPE=bearer) and Basic auth (default)
+    auth_type = os.getenv("ARCADS_AUTH_TYPE", "basic").lower()
+    if auth_type == "bearer":
+        return {"Authorization": f"Bearer {ARCADS_API_KEY}", "Content-Type": "application/json"}
     creds = base64.b64encode(f"{ARCADS_API_KEY}:".encode()).decode()
     return {"Authorization": f"Basic {creds}", "Content-Type": "application/json"}
 

@@ -2480,10 +2480,14 @@ async def vs_generate(request: Request):
                     "model": model,
                     "productId": product_id,
                     "prompt": prompt,
-                    "aspectRatio": fmt,
                 }
-                if duration:
-                    payload["duration"] = int(duration)
+                if fmt and fmt != "auto":
+                    payload["aspectRatio"] = fmt
+                if duration and str(duration) not in ("0", "auto", "none", "null"):
+                    try:
+                        payload["duration"] = int(duration)
+                    except (ValueError, TypeError):
+                        pass
 
                 result = await arcads_generate_video(payload)
                 arcads_id = result.get("id") or result.get("videoId", "")

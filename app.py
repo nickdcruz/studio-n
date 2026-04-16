@@ -103,6 +103,23 @@ def db_save_job(job_id: str, job: dict, assembled_content: dict = None):
     conn.commit()
     conn.close()
 
+def db_save_job_initial(job_id: str, title: str, client: str, project_name: str, brief: str):
+    """Write a processing stub so the job appears in Outputs immediately."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
+        INSERT OR IGNORE INTO jobs
+        (id, title, client, project_name, brief, timestamp, status)
+        VALUES (?,?,?,?,?,datetime('now'),'processing')
+    """, (job_id, title or brief[:60], client, project_name, brief))
+    conn.commit()
+    conn.close()
+
+def db_update_job_status(job_id: str, status: str):
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("UPDATE jobs SET status=? WHERE id=?", (status, job_id))
+    conn.commit()
+    conn.close()
+
 def db_load_all_jobs(show_archived: bool = False) -> list[dict]:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -268,9 +285,10 @@ def init_video_db():
 
 init_video_db()
 
-_agent_cache: dict = {}
-_jobs:        dict = {}
-_completed:   dict = {}
+_agent_cache:       dict = {}
+_jobs:              dict = {}
+_completed:         dict = {}
+_processing_status: dict = {}   # job_id → latest status message string
 
 VALID_AGENTS = {"callum", "priya", "dante", "suki", "felix", "nadia", "zara", "reeva", "kiara", "rex", "nova"}
 
@@ -1315,6 +1333,8 @@ async def process_job(job_id: str, brief: str, title: str = "",
     q = _jobs[job_id]
 
     async def emit(ev: dict) -> None:
+        if ev.get("type") == "status":
+            _processing_status[job_id] = ev.get("message", "")
         await q.put(ev)
 
     job: dict = {
@@ -1324,6 +1344,9 @@ async def process_job(job_id: str, brief: str, title: str = "",
         "client": client,
         "project_name": project_name,
     }
+
+    # Write a processing stub immediately — job appears in Outputs right away.
+    db_save_job_initial(job_id, title or brief[:60], client, project_name, brief)
 
     try:
         # Build context-enriched brief — tells Marcus and all agents exactly which
@@ -1613,8 +1636,10 @@ async def process_job(job_id: str, brief: str, title: str = "",
 
     except Exception as exc:
         logging.error("process_job %s failed: %s\n%s", job_id, exc, traceback.format_exc())
+        db_update_job_status(job_id, "failed")
         await emit({"type": "error", "message": str(exc)})
     finally:
+        _processing_status.pop(job_id, None)
         await asyncio.sleep(7200)
         _jobs.pop(job_id, None)
         _completed.pop(job_id, None)
@@ -1830,6 +1855,22 @@ async def get_job(job_id: str):
     if "\n\n--- Attached file:" in brief:
         brief = brief.split("\n\n--- Attached file:")[0]
     return {"title": title, "brief": brief, "client": client_val, "project_name": project_name or ""}
+
+@app.get("/api/job/{job_id}/progress")
+async def job_progress(job_id: str):
+    """Poll endpoint for the Outputs page — returns current processing state."""
+    if job_id in _completed:
+        return {"status": "complete", "message": "Done"}
+    if job_id in _jobs:
+        msg = _processing_status.get(job_id, "Generating…")
+        return {"status": "processing", "message": msg}
+    # Check DB for persisted status
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
+    conn.close()
+    if row:
+        return {"status": row[0] or "complete", "message": ""}
+    return JSONResponse({"error": "not found"}, status_code=404)
 
 @app.get("/api/stream/{job_id}")
 async def stream_job(job_id: str):
@@ -2070,15 +2111,16 @@ async def outputs_page(request: Request):
     else:
         body = ""
         for job in jobs:
-            jid    = job["id"]
-            title  = job.get("title") or job.get("brief", "")[:60]
-            client = job.get("client", "other")
-            pname  = job.get("project_name", "")
-            brief  = job.get("brief", "")
-            ts     = job.get("timestamp", job.get("created_at", ""))[:16].replace("T", " ")
-            cm     = CLIENT_META.get(client, CLIENT_META["other"])
+            jid        = job["id"]
+            title      = job.get("title") or job.get("brief", "")[:60]
+            client     = job.get("client", "other")
+            pname      = job.get("project_name", "")
+            brief      = job.get("brief", "")
+            ts         = job.get("timestamp", job.get("created_at", ""))[:16].replace("T", " ")
+            job_status = job.get("status", "complete")
+            cm         = CLIENT_META.get(client, CLIENT_META["other"])
             client_label = pname if (client == "other" and pname) else cm["label"]
-            is_archived = bool(job.get("archived", 0))
+            is_archived  = bool(job.get("archived", 0))
 
             # Agents used
             s1 = job.get("stage1_outputs", {})
@@ -2134,8 +2176,24 @@ async def outputs_page(request: Request):
             title_attr = title.lower().replace('"', '')
             brief_attr = brief_snippet.lower().replace('"', '')
 
+            _border_color = "#3b82f6" if job_status == "processing" else ("#ef4444" if job_status == "failed" else cm['fg'] + "40")
+            _status_banner = ""
+            if job_status == "processing":
+                _status_banner = (
+                    f'<div class="job-processing-banner" id="banner-{jid}">'
+                    f'<span class="proc-spinner"></span>'
+                    f'<span class="proc-msg" id="msg-{jid}">Generating…</span>'
+                    f'</div>'
+                )
+            elif job_status == "failed":
+                _status_banner = (
+                    '<div style="margin:6px 0;padding:6px 10px;border-radius:6px;'
+                    'background:#fee2e2;color:#b91c1c;font-size:12px;font-weight:600;">'
+                    'Generation failed — re-brief to retry</div>'
+                )
+
             body += f"""
-<div class="job-card" id="card-{jid}" style="border-left:4px solid {cm['fg']}40;" data-id="{jid}" data-title="{title_attr}" data-brief="{brief_attr}">
+<div class="job-card" id="card-{jid}" style="border-left:4px solid {_border_color};" data-id="{jid}" data-title="{title_attr}" data-brief="{brief_attr}" data-status="{job_status}">
   <div class="job-top">
     <input type="checkbox" class="job-check" onchange="onCheckChange()" title="Select for bulk action">
     <div style="flex:1;min-width:0;">
@@ -2148,6 +2206,7 @@ async def outputs_page(request: Request):
     </div>
     <button class="star-btn" onclick="toggleStar('{jid}', this)" title="Star / pin this job">☆</button>
   </div>
+  {_status_banner}
   {"<div class='job-agents'>" + agent_chips + "</div>" if agent_chips else ""}
   <div class="job-files">
     {file_btns}
@@ -2290,7 +2349,55 @@ function filterJobs(q) {{
 
 // Init on load
 initStars();
+
+// ── In-progress job polling ───────────────────────────────────
+(function() {{
+  var processingCards = document.querySelectorAll('.job-card[data-status="processing"]');
+  if (processingCards.length === 0) return;
+
+  var pollers = {{}};
+
+  function pollJob(jid) {{
+    fetch('/api/job/' + jid + '/progress')
+      .then(function(r) {{ return r.json(); }})
+      .then(function(data) {{
+        var msgEl = document.getElementById('msg-' + jid);
+        var card  = document.getElementById('card-' + jid);
+        if (data.status === 'processing') {{
+          if (msgEl && data.message) msgEl.textContent = data.message;
+        }} else if (data.status === 'complete' || data.status === 'failed') {{
+          clearInterval(pollers[jid]);
+          delete pollers[jid];
+          // Reload the page so the card renders with full outputs
+          window.location.reload();
+        }}
+      }})
+      .catch(function() {{/* network blip — keep polling */}});
+  }}
+
+  processingCards.forEach(function(card) {{
+    var jid = card.dataset.id;
+    pollers[jid] = setInterval(function() {{ pollJob(jid); }}, 4000);
+    pollJob(jid); // immediate first check
+  }});
+}})();
 </script>
+<style>
+.job-processing-banner {{
+  display:flex;align-items:center;gap:8px;
+  margin:6px 0;padding:8px 12px;
+  border-radius:7px;background:#eff6ff;
+  border:1px solid #bfdbfe;
+  font-size:12px;font-weight:600;color:#1d4ed8;
+}}
+.proc-spinner {{
+  display:inline-block;width:12px;height:12px;
+  border:2px solid #93c5fd;border-top-color:#1d4ed8;
+  border-radius:50%;animation:proc-spin 0.8s linear infinite;flex-shrink:0;
+}}
+@keyframes proc-spin {{ to {{ transform:rotate(360deg); }} }}
+.proc-msg {{ flex:1; }}
+</style>
 </body></html>""")
 
 # ── Legacy file-based outputs (kept for backward compat) ──────────

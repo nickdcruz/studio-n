@@ -154,7 +154,8 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 GITHUB_REPO         = os.getenv("GITHUB_REPO", "nickdcruz/nicklaus-marketing-agents")
 GITHUB_TOKEN        = os.environ.get("GITHUB_TOKEN")
 ANTHROPIC_API_KEY    = os.environ["ANTHROPIC_API_KEY"]
-ARCADS_API_KEY       = os.getenv("ARCADS_API_KEY", "")
+ARCADS_CLIENT_ID     = os.getenv("ARCADS_CLIENT_ID", os.getenv("ARCADS_API_KEY", ""))
+ARCADS_CLIENT_SECRET = os.getenv("ARCADS_CLIENT_SECRET", "")
 ARCADS_BASE_URL      = os.getenv("ARCADS_BASE_URL", "https://external-api.arcads.ai")
 ARCADS_CREDIT_BUDGET = float(os.getenv("ARCADS_CREDIT_BUDGET", "200"))
 HTTP_USER            = os.getenv("HTTP_USER", "admin")
@@ -169,15 +170,12 @@ anthropic_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
 def _arcads_headers():
     import base64
-    # Support both Bearer (ARCADS_AUTH_TYPE=bearer) and Basic auth (default)
-    auth_type = os.getenv("ARCADS_AUTH_TYPE", "basic").lower()
-    if auth_type == "bearer":
-        return {"Authorization": f"Bearer {ARCADS_API_KEY}", "Content-Type": "application/json"}
-    creds = base64.b64encode(f"{ARCADS_API_KEY}:".encode()).decode()
+    # HTTP Basic auth: Client ID as username, Client Secret as password
+    creds = base64.b64encode(f"{ARCADS_CLIENT_ID}:{ARCADS_CLIENT_SECRET}".encode()).decode()
     return {"Authorization": f"Basic {creds}", "Content-Type": "application/json"}
 
 async def arcads_get_products() -> list:
-    if not ARCADS_API_KEY:
+    if not ARCADS_CLIENT_ID:
         return []
     async with httpx.AsyncClient() as client:
         r = await client.get(f"{ARCADS_BASE_URL}/v1/products", headers=_arcads_headers(), timeout=15)

@@ -205,10 +205,12 @@ async def arcads_generate_image(payload: dict) -> dict:
         return r.json()
 
 async def arcads_poll_video(video_id: str) -> dict:
+    """Poll job status via /v1/assets/{id} — used for all v2-generated jobs (video + image)."""
     async with httpx.AsyncClient() as client:
-        r = await client.get(f"{ARCADS_BASE_URL}/v1/videos/{video_id}",
+        r = await client.get(f"{ARCADS_BASE_URL}/v1/assets/{video_id}",
                              headers=_arcads_headers(), timeout=15)
-        r.raise_for_status()
+        if not r.is_success:
+            raise Exception(f"Asset poll {r.status_code}: {r.text[:200]}")
         return r.json()
 
 async def arcads_poll_asset(asset_id: str) -> dict:
@@ -221,15 +223,22 @@ async def arcads_poll_asset(asset_id: str) -> dict:
 async def arcads_upload_file(file_bytes: bytes, filename: str, content_type: str) -> str:
     """Upload file to Arcads presigned storage, return filePath for use in generation requests."""
     async with httpx.AsyncClient() as client:
-        r = await client.post(f"{ARCADS_BASE_URL}/v1/uploads/presigned",
-                              json={"filename": filename, "contentType": content_type},
+        # Step 1: get presigned URL
+        r = await client.post(f"{ARCADS_BASE_URL}/v1/file-upload/get-presigned-url",
+                              json={"fileType": content_type},
                               headers=_arcads_headers(), timeout=15)
-        r.raise_for_status()
+        logging.info("Presigned URL response %d: %s", r.status_code, r.text[:300])
+        if not r.is_success:
+            raise Exception(f"Presigned URL failed {r.status_code}: {r.text[:200]}")
         data = r.json()
-        upload_url = data.get("uploadUrl") or data.get("url", "")
-        file_path   = data.get("filePath") or data.get("path", "")
-        await client.put(upload_url, content=file_bytes,
-                         headers={"Content-Type": content_type}, timeout=120)
+        upload_url = data.get("presignedUrl") or data.get("uploadUrl") or data.get("url", "")
+        file_path  = data.get("filePath") or data.get("path", "")
+        if not upload_url:
+            raise Exception(f"No presigned URL in response: {data}")
+        # Step 2: PUT file to S3 presigned URL (no auth header)
+        upload_r = await client.put(upload_url, content=file_bytes,
+                                    headers={"Content-Type": content_type}, timeout=120)
+        logging.info("S3 upload response %d", upload_r.status_code)
         return file_path
 
 # SQLite table for video studio jobs
@@ -2513,8 +2522,10 @@ async def vs_generate(request: Request):
 async def vs_status(arcads_id: str):
     try:
         data = await arcads_poll_video(arcads_id)
-        status = data.get("videoStatus") or data.get("status", "pending")
-        url    = data.get("videoUrl") or data.get("url", "")
+        # /v1/assets returns: status ("created"|"pending"|"generated"|"failed"), url
+        status = data.get("status") or data.get("videoStatus") or "pending"
+        url    = data.get("url") or data.get("videoUrl") or ""
+        logging.info("Poll %s → status=%s url=%s", arcads_id, status, url[:60] if url else "")
         return {"arcadsId": arcads_id, "status": status, "url": url, "raw": data}
     except Exception as e:
         return JSONResponse({"error": str(e), "status": "error"}, status_code=200)
@@ -2567,6 +2578,18 @@ async def vs_mimic(
         logging.error("Mimic error: %s", traceback.format_exc())
         return JSONResponse({"error": str(e)}, status_code=500)
 
+@app.post("/api/video-studio/upload-file")
+async def vs_upload_file(file: UploadFile = File(...)):
+    """Upload any file to Arcads presigned storage, return filePath."""
+    try:
+        file_bytes   = await file.read()
+        content_type = file.content_type or "application/octet-stream"
+        file_path    = await arcads_upload_file(file_bytes, file.filename, content_type)
+        return {"filePath": file_path}
+    except Exception as e:
+        logging.error("Upload file error: %s", traceback.format_exc())
+        return JSONResponse({"error": str(e)}, status_code=500)
+
 @app.post("/api/video-studio/brand-visual")
 async def vs_brand_visual(request: Request):
     try:
@@ -2587,11 +2610,13 @@ async def vs_brand_visual(request: Request):
         payload = {
             "model": body.get("model", "nano-banana-2"),
             "prompt": body.get("prompt", ""),
+            "aspectRatio": body.get("aspectRatio", "1:1"),
         }
         if product_id:
             payload["productId"] = product_id
-        if body.get("referenceBase64"):
-            payload["refImageAsBase64"] = body["referenceBase64"]
+        # referenceImages takes presigned file paths — if provided, pass as array
+        if body.get("referenceImagePath"):
+            payload["referenceImages"] = [body["referenceImagePath"]]
 
         result = await arcads_generate_image(payload)
         asset_id = result.get("id") or result.get("assetId", "")
@@ -2648,14 +2673,10 @@ async def _bg_poll_pending():
             conn.close()
             for (arcads_id, job_type) in rows:
                 try:
-                    if job_type == "brand":
-                        data   = await arcads_poll_asset(arcads_id)
-                        status = (data.get("assetStatus") or data.get("status", "pending")).lower()
-                        url    = data.get("assetUrl") or data.get("url", "")
-                    else:
-                        data   = await arcads_poll_video(arcads_id)
-                        status = (data.get("videoStatus") or data.get("status", "pending")).lower()
-                        url    = data.get("videoUrl") or data.get("url", "")
+                    # Both video and image jobs are polled via /v1/assets/{id}
+                    data   = await arcads_poll_video(arcads_id)
+                    status = (data.get("status") or data.get("videoStatus") or "pending").lower()
+                    url    = data.get("url") or data.get("videoUrl") or ""
                     if status in ("done", "generated", "completed", "failed", "error"):
                         conn = sqlite3.connect(DB_PATH)
                         conn.execute(

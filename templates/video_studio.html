@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Video Studio — Studio N v6.1</title>
+  <title>Video Studio — Studio N v6.2</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -288,7 +288,7 @@
         <span class="nav-brand-sub">by Marcus</span>
       </div>
     </a>
-    <span class="version-badge">v6.1</span>
+    <span class="version-badge">v6.2</span>
   </div>
   <div class="nav-right">
     <a href="/" class="nav-link">Brief</a>
@@ -535,6 +535,25 @@
         </label>
         <div class="ref-preview" id="brand-ref-preview">
           <img id="brand-ref-img" src="" alt="Reference">
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Aspect Ratio</label>
+          <select class="field-select" id="brand-aspect">
+            <option value="1:1" selected>1:1 Square (Feed)</option>
+            <option value="9:16">9:16 Portrait (Stories)</option>
+            <option value="16:9">16:9 Landscape</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Variations</label>
+          <select class="field-select" id="brand-variations">
+            <option value="1" selected>1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+          </select>
         </div>
       </div>
 
@@ -898,14 +917,14 @@ async function submitMimic() {
 }
 
 // ── Brand Visuals ────────────────────────────────────────────
-var _brandRefBase64 = null;
+var _brandRefFile = null;
 function onBrandRefSelect(e) {
   var f = e.target.files[0];
   if (!f) return;
+  _brandRefFile = f;
   document.getElementById('brand-ref-name').textContent = f.name;
   var reader = new FileReader();
   reader.onload = function(ev) {
-    _brandRefBase64 = ev.target.result.split(',')[1];
     var img = document.getElementById('brand-ref-img');
     img.src = ev.target.result;
     document.getElementById('brand-ref-preview').classList.add('visible');
@@ -922,10 +941,10 @@ function onBrandRefSelect(e) {
     e.preventDefault(); zone.classList.remove('dragover');
     var f = e.dataTransfer.files[0];
     if (f) {
+      _brandRefFile = f;
       document.getElementById('brand-ref-name').textContent = f.name;
       var reader = new FileReader();
       reader.onload = function(ev) {
-        _brandRefBase64 = ev.target.result.split(',')[1];
         var img = document.getElementById('brand-ref-img');
         img.src = ev.target.result;
         document.getElementById('brand-ref-preview').classList.add('visible');
@@ -950,31 +969,51 @@ async function submitBrandVisuals() {
   document.getElementById('brand-results').style.display = '';
 
   var productId = document.getElementById('brand-product-id').value.trim();
+  var aspectRatio = document.getElementById('brand-aspect').value;
+  var variations = parseInt(document.getElementById('brand-variations').value) || 1;
+
+  // If a reference image was selected, upload it first via presigned URL
+  var refImagePath = null;
+  if (_brandRefFile) {
+    try {
+      var fd = new FormData();
+      fd.append('file', _brandRefFile);
+      var uploadR = await fetch('/api/video-studio/upload-file', { method: 'POST', body: fd });
+      var uploadData = await uploadR.json();
+      if (uploadData.filePath) refImagePath = uploadData.filePath;
+    } catch(e) {
+      console.warn('Reference image upload failed, proceeding without it:', e.message);
+    }
+  }
 
   try {
     for (var i = 0; i < types.length; i++) {
-      var t = types[i];
-      var fullPrompt = prompt + ' — ' + t + ' shot';
-      var payload = {
-        model: 'nano-banana-2',
-        productId: productId,
-        prompt: fullPrompt,
-        referenceBase64: _brandRefBase64 || null,
-      };
-      var r = await fetch('/api/video-studio/brand-visual', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload),
-      });
-      var data = await r.json();
-      if (data.error) { showError('brand-error', data.error); continue; }
+      for (var v = 0; v < variations; v++) {
+        var t = types[i];
+        var fullPrompt = prompt + ' — ' + t + ' shot';
+        var payload = {
+          model: 'nano-banana-2',
+          productId: productId,
+          prompt: fullPrompt,
+          aspectRatio: aspectRatio,
+        };
+        if (refImagePath) payload.referenceImagePath = refImagePath;
 
-      var cardId = 'brand-card-' + data.assetId;
-      listEl.insertAdjacentHTML('afterbegin', buildJobCard({
-        id: cardId, arcadsId: data.assetId, model: 'nano-banana-2',
-        format: t, jobType: 'brand', prompt: fullPrompt, mediaType: 'image',
-      }));
-      if (data.assetId) startAssetPoller(data.assetId, cardId);
+        var r = await fetch('/api/video-studio/brand-visual', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        });
+        var data = await r.json();
+        if (data.error) { showError('brand-error', data.error); continue; }
+
+        var cardId = 'brand-card-' + data.assetId + '-' + Date.now();
+        listEl.insertAdjacentHTML('afterbegin', buildJobCard({
+          id: cardId, arcadsId: data.assetId, model: 'nano-banana-2',
+          format: aspectRatio, jobType: 'brand', prompt: fullPrompt, mediaType: 'image',
+        }));
+        if (data.assetId) startAssetPoller(data.assetId, cardId);
+      }
     }
   } catch(e) {
     showError('brand-error', 'Request failed: ' + e.message);

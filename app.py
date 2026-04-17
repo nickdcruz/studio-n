@@ -2639,8 +2639,16 @@ async def vs_generate(request: Request):
                     "productId": product_id,
                     "prompt": prompt,
                 }
+                # Seedance 2.0 uses "resolution" instead of "aspectRatio" (e.g. "1280x720", "720x1280")
+                SEEDANCE2_RESOLUTION_MAP = {
+                    "16:9": "1280x720", "9:16": "720x1280",
+                    "1:1": "720x720",   "4:3": "960x720",
+                }
                 if fmt and fmt != "auto":
-                    payload["aspectRatio"] = fmt
+                    if model == "seedance-2.0":
+                        payload["resolution"] = SEEDANCE2_RESOLUTION_MAP.get(fmt, "720x1280")
+                    else:
+                        payload["aspectRatio"] = fmt
                 if duration and str(duration) not in ("0", "auto", "none", "null"):
                     try:
                         payload["duration"] = int(duration)
@@ -2712,11 +2720,18 @@ async def vs_mimic(
         for fmt in fmt_list:
             for _ in range(variations):
                 vid_job_id = str(uuid.uuid4())
+                SEEDANCE2_RESOLUTION_MAP = {
+                    "16:9": "1280x720", "9:16": "720x1280",
+                    "1:1": "720x720",   "4:3": "960x720",
+                }
                 payload = {
                     "model": model,
                     "prompt": prompt or "Recreate the visual style, mood, and composition of this reference",
-                    "aspectRatio": fmt,
                 }
+                if model == "seedance-2.0":
+                    payload["resolution"] = SEEDANCE2_RESOLUTION_MAP.get(fmt, "720x1280")
+                else:
+                    payload["aspectRatio"] = fmt
                 if product_id:
                     payload["productId"] = product_id
 
@@ -2730,7 +2745,6 @@ async def vs_mimic(
                 elif model in REFIMAGE_MODELS or model == "seedance-2.0":
                     payload["referenceImages"] = [file_path]
                 else:
-                    # Fallback: try startFrame for unknown models that support it
                     payload["startFrame"] = file_path
 
                 logging.info("Mimic payload: %s", json.dumps(payload))

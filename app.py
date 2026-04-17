@@ -2646,7 +2646,7 @@ async def vs_generate(request: Request):
                 }
                 if fmt and fmt != "auto":
                     if model == "seedance-2.0":
-                        payload["resolution"] = SEEDANCE2_RESOLUTION_MAP.get(fmt, "720x1280")
+                        payload["resolution"] = SEEDANCE2_RESOLUTION_MAP.get(fmt, "720p")
                     else:
                         payload["aspectRatio"] = fmt
                 if duration and str(duration) not in ("0", "auto", "none", "null"):
@@ -2655,6 +2655,7 @@ async def vs_generate(request: Request):
                     except (ValueError, TypeError):
                         pass
 
+                logging.info("vs_generate final payload: %s", json.dumps(payload))
                 result = await arcads_generate_video(payload)
                 arcads_id = result.get("id") or result.get("videoId", "")
 

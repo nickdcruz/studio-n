@@ -339,7 +339,7 @@
           <option value="kling-3.0" selected>Kling 3.0</option>
           <option value="sora2">Sora 2</option>
           <option value="veo31">Veo 3.1</option>
-          <option value="seedance-2.0">Seedance 2.0 (needs reference)</option>
+          <option value="seedance-2.0">Seedance 2.0</option>
           <option value="grok-video">Grok Video</option>
         </select>
       </div>
@@ -739,7 +739,8 @@ function loadSavedJobs(callback) {
         var card = buildJobCard({
           id: cardId, arcadsId: job.arcads_id,
           model: job.model, format: fmtData.format || '',
-          jobType: job.job_type, prompt: job.prompt, mediaType: mediaType
+          jobType: job.job_type, prompt: job.prompt, mediaType: mediaType,
+          createdAt: job.created_at || ''
         });
         var listId   = job.job_type === 'mimic' ? 'mimic-jobs-list'
                      : job.job_type === 'brand' ? 'brand-jobs-list'
@@ -809,9 +810,52 @@ function updateJobCard(cardId, status, url, mediaType) {
     if (mediaType === 'image') {
       showImageWithRetry(mediaEl, url, 0);
     } else {
-      mediaEl.innerHTML = '<video src="' + url + '" controls style="width:100%;border-radius:8px;max-height:320px;"></video><br><a href="' + url + '" target="_blank" class="btn-download" download>Download Video</a>';
+      var arcadsId = card.dataset.arcadsId || '';
+      renderVideoCard(mediaEl, url, arcadsId);
     }
   }
+}
+
+function renderVideoCard(mediaEl, url, arcadsId) {
+  mediaEl.innerHTML =
+    '<video src="' + url + '" controls style="width:100%;border-radius:8px;max-height:320px;" ' +
+    'onerror="handleVideoError(this, \'' + arcadsId + '\')"></video><br>' +
+    '<a href="' + url + '" target="_blank" class="btn-download" download>&#11123; Download Video</a> ' +
+    (arcadsId ? '<button onclick="refreshVideoUrl(\'' + arcadsId + '\', this.closest(\'.job-media\'))" ' +
+    'style="font-size:11px;padding:4px 10px;border-radius:5px;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer;color:#64748b;">&#8635; Refresh URL</button>' : '');
+}
+
+function handleVideoError(videoEl, arcadsId) {
+  if (!arcadsId) return;
+  var mediaEl = videoEl.closest('.job-media');
+  if (mediaEl) {
+    mediaEl.innerHTML = '<div style="font-size:12px;color:#94a3b8;padding:8px 0;">URL expired. ' +
+      '<button onclick="refreshVideoUrl(\'' + arcadsId + '\', this.closest(\'.job-media\'))" ' +
+      'style="font-size:11px;padding:3px 9px;border-radius:5px;border:1px solid #3b82f6;background:#eff6ff;cursor:pointer;color:#1d4ed8;">&#8635; Get fresh link</button></div>';
+  }
+}
+
+function refreshVideoUrl(arcadsId, mediaEl) {
+  if (!arcadsId || !mediaEl) return;
+  mediaEl.innerHTML = '<span style="font-size:12px;color:#94a3b8;"><span class="spinner"></span> Fetching fresh URL...</span>';
+  fetch('/api/video-studio/status/' + arcadsId)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var freshUrl = data.url || '';
+      if (freshUrl) {
+        renderVideoCard(mediaEl, freshUrl, arcadsId);
+        // Persist fresh URL back to DB
+        fetch('/api/video-studio/update-job', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({arcadsId: arcadsId, status: 'generated', url: freshUrl})
+        });
+      } else {
+        mediaEl.innerHTML = '<span style="font-size:12px;color:#ef4444;">Could not retrieve fresh URL. Try again later.</span>';
+      }
+    })
+    .catch(function() {
+      mediaEl.innerHTML = '<span style="font-size:12px;color:#ef4444;">Network error. Try again.</span>';
+    });
 }
 
 // Arcads marks status=generated before S3 write completes — retry on 404/error
@@ -843,10 +887,10 @@ function showImageWithRetry(mediaEl, url, attempt) {
 }
 
 function buildJobCard(opts) {
-  // opts: { id, arcadsId, model, format, jobType, prompt, mediaType }
-  var ts = new Date().toLocaleString();
+  // opts: { id, arcadsId, model, format, jobType, prompt, mediaType, createdAt }
+  var ts = opts.createdAt ? new Date(opts.createdAt).toLocaleString() : new Date().toLocaleString();
   var badgeType = opts.jobType === 'mimic' ? 'Mimic' : (opts.jobType === 'brand' ? 'Brand Visual' : 'Generate');
-  return '<div class="job-card" id="' + opts.id + '">' +
+  return '<div class="job-card" id="' + opts.id + '" data-arcads-id="' + (opts.arcadsId || '') + '">' +
     '<div class="job-card-top">' +
     '<span class="job-model-badge">' + (opts.model || '') + '</span>' +
     (opts.format ? '<span class="job-format-badge">' + opts.format + '</span>' : '') +

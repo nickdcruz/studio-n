@@ -2641,8 +2641,8 @@ async def vs_generate(request: Request):
                 }
                 # Seedance 2.0 uses "resolution" instead of "aspectRatio" (e.g. "1280x720", "720x1280")
                 SEEDANCE2_RESOLUTION_MAP = {
-                    "16:9": "1280x720", "9:16": "720x1280",
-                    "1:1": "720x720",   "4:3": "960x720",
+                    "16:9": "720p", "9:16": "720p",
+                    "1:1": "720p",  "4:3": "720p",
                 }
                 if fmt and fmt != "auto":
                     if model == "seedance-2.0":
@@ -2721,8 +2721,8 @@ async def vs_mimic(
             for _ in range(variations):
                 vid_job_id = str(uuid.uuid4())
                 SEEDANCE2_RESOLUTION_MAP = {
-                    "16:9": "1280x720", "9:16": "720x1280",
-                    "1:1": "720x720",   "4:3": "960x720",
+                    "16:9": "720p", "9:16": "720p",
+                    "1:1": "720p",  "4:3": "720p",
                 }
                 payload = {
                     "model": model,

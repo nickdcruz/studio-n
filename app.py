@@ -288,9 +288,15 @@ init_video_db()
 _agent_cache:       dict = {}
 _jobs:              dict = {}
 _completed:         dict = {}
-_processing_status: dict = {}   # job_id → latest status message string
+_processing_status: dict = {}
 
 VALID_AGENTS = {"callum", "priya", "dante", "suki", "felix", "nadia", "zara", "reeva", "kiara", "rex", "nova"}
+
+# Seedance 2.0 takes "resolution" instead of "aspectRatio"; all ratios map to 720p.
+SEEDANCE2_RESOLUTION_MAP: dict = {
+    "16:9": "720p", "9:16": "720p",
+    "1:1":  "720p", "4:3":  "720p",
+}
 
 THIRD_PARTY_MESSAGES = {
     "video_production": (
@@ -1637,12 +1643,13 @@ async def process_job(job_id: str, brief: str, title: str = "",
     except Exception as exc:
         logging.error("process_job %s failed: %s\n%s", job_id, exc, traceback.format_exc())
         db_update_job_status(job_id, "failed")
+        _processing_status[job_id] = "__failed__"
         await emit({"type": "error", "message": str(exc)})
     finally:
-        _processing_status.pop(job_id, None)
         await asyncio.sleep(7200)
         _jobs.pop(job_id, None)
         _completed.pop(job_id, None)
+        _processing_status.pop(job_id, None)
 
 # ── Routes ────────────────────────────────────────────────────────
 
@@ -1863,6 +1870,8 @@ async def job_progress(job_id: str):
         return {"status": "complete", "message": "Done"}
     if job_id in _jobs:
         msg = _processing_status.get(job_id, "Generating…")
+        if msg == "__failed__":
+            return {"status": "failed", "message": "Generation failed"}
         return {"status": "processing", "message": msg}
     # Check DB for persisted status
     conn = sqlite3.connect(DB_PATH)
@@ -2639,11 +2648,6 @@ async def vs_generate(request: Request):
                     "productId": product_id,
                     "prompt": prompt,
                 }
-                # Seedance 2.0 uses "resolution" instead of "aspectRatio" (e.g. "1280x720", "720x1280")
-                SEEDANCE2_RESOLUTION_MAP = {
-                    "16:9": "720p", "9:16": "720p",
-                    "1:1": "720p",  "4:3": "720p",
-                }
                 if fmt and fmt != "auto":
                     if model == "seedance-2.0":
                         payload["resolution"] = SEEDANCE2_RESOLUTION_MAP.get(fmt, "720p")
@@ -2721,16 +2725,12 @@ async def vs_mimic(
         for fmt in fmt_list:
             for _ in range(variations):
                 vid_job_id = str(uuid.uuid4())
-                SEEDANCE2_RESOLUTION_MAP = {
-                    "16:9": "720p", "9:16": "720p",
-                    "1:1": "720p",  "4:3": "720p",
-                }
                 payload = {
                     "model": model,
                     "prompt": prompt or "Recreate the visual style, mood, and composition of this reference",
                 }
                 if model == "seedance-2.0":
-                    payload["resolution"] = SEEDANCE2_RESOLUTION_MAP.get(fmt, "720x1280")
+                    payload["resolution"] = SEEDANCE2_RESOLUTION_MAP.get(fmt, "720p")
                 else:
                     payload["aspectRatio"] = fmt
                 if product_id:

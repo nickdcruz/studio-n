@@ -171,10 +171,14 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 GITHUB_REPO         = os.getenv("GITHUB_REPO", "nickdcruz/nicklaus-marketing-agents")
 GITHUB_TOKEN        = os.environ.get("GITHUB_TOKEN")
 ANTHROPIC_API_KEY    = os.environ["ANTHROPIC_API_KEY"]
-ARCADS_CLIENT_ID     = os.getenv("ARCADS_CLIENT_ID", os.getenv("ARCADS_API_KEY", ""))
-ARCADS_CLIENT_SECRET = os.getenv("ARCADS_CLIENT_SECRET", "")
-ARCADS_BASE_URL      = os.getenv("ARCADS_BASE_URL", "https://external-api.arcads.ai")
-ARCADS_CREDIT_BUDGET = float(os.getenv("ARCADS_CREDIT_BUDGET", "200"))
+ARCADS_CLIENT_ID      = os.getenv("ARCADS_CLIENT_ID", os.getenv("ARCADS_API_KEY", ""))
+ARCADS_CLIENT_SECRET  = os.getenv("ARCADS_CLIENT_SECRET", "")
+ARCADS_BASE_URL       = os.getenv("ARCADS_BASE_URL", "https://external-api.arcads.ai")
+ARCADS_CREDIT_BUDGET  = float(os.getenv("ARCADS_CREDIT_BUDGET", "200"))
+# Second Arcads workspace (e.g. WiBiz workspace — set these in Railway)
+ARCADS_CLIENT_ID_2    = os.getenv("ARCADS_CLIENT_ID_2", "")
+ARCADS_CLIENT_SECRET_2 = os.getenv("ARCADS_CLIENT_SECRET_2", "")
+ARCADS_WORKSPACE_2_LABEL = os.getenv("ARCADS_WORKSPACE_2_LABEL", "WiBiz")
 HTTP_USER            = os.getenv("HTTP_USER", "admin")
 HTTP_PASS           = os.getenv("HTTP_PASS", "changeme")
 SESSION_SECRET      = os.getenv("SESSION_SECRET", secrets.token_hex(32))
@@ -185,17 +189,20 @@ anthropic_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
 # ── Arcads API helpers ────────────────────────────────────────────
 
-def _arcads_headers():
+def _arcads_headers(workspace: int = 1):
     import base64
-    # HTTP Basic auth: Client ID as username, Client Secret as password
-    creds = base64.b64encode(f"{ARCADS_CLIENT_ID}:{ARCADS_CLIENT_SECRET}".encode()).decode()
+    if workspace == 2 and ARCADS_CLIENT_ID_2:
+        creds = base64.b64encode(f"{ARCADS_CLIENT_ID_2}:{ARCADS_CLIENT_SECRET_2}".encode()).decode()
+    else:
+        creds = base64.b64encode(f"{ARCADS_CLIENT_ID}:{ARCADS_CLIENT_SECRET}".encode()).decode()
     return {"Authorization": f"Basic {creds}", "Content-Type": "application/json"}
 
-async def arcads_get_products() -> list:
+async def arcads_get_products(workspace: int = 1) -> list:
     if not ARCADS_CLIENT_ID:
         return []
     async with httpx.AsyncClient() as client:
-        r = await client.get(f"{ARCADS_BASE_URL}/v1/products", headers=_arcads_headers(), timeout=15)
+        r = await client.get(f"{ARCADS_BASE_URL}/v1/products",
+                             headers=_arcads_headers(workspace), timeout=15)
         r.raise_for_status()
         data = r.json()
         if isinstance(data, list):
@@ -1086,6 +1093,362 @@ async def post_to_buffer(social_pack_md: str) -> None:
         logging.error("Buffer post failed: %s", e)
 
 
+# ── Campaign system ────────────────────────────────────────────────
+
+_campaign_status: dict = {}  # campaign_id → {step, message, calendar?}
+
+def init_campaign_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS campaigns (
+            id TEXT PRIMARY KEY,
+            client TEXT DEFAULT 'other',
+            platform TEXT DEFAULT 'instagram',
+            duration_days INTEGER DEFAULT 30,
+            style_brief TEXT DEFAULT '',
+            reference_accounts TEXT DEFAULT '[]',
+            status TEXT DEFAULT 'processing',
+            current_step TEXT DEFAULT '',
+            calendar_json TEXT DEFAULT '{}',
+            video_job_ids TEXT DEFAULT '[]',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+init_campaign_db()
+
+# Multi-platform Apify scrapers
+
+def _run_apify_instagram_sync(handles: list, max_posts: int = 25) -> list:
+    client = ApifyClient(APIFY_API_TOKEN)
+    run = client.actor("apify/instagram-scraper").call(run_input={
+        "directUrls": [f"https://www.instagram.com/{h.lstrip('@')}/" for h in handles],
+        "resultsType": "posts",
+        "resultsLimit": max_posts,
+    })
+    return list(client.dataset(run["defaultDatasetId"]).iterate_items())[:max_posts]
+
+def _run_apify_tiktok_sync(handles: list, max_posts: int = 25) -> list:
+    client = ApifyClient(APIFY_API_TOKEN)
+    run = client.actor("clockworks/free-tiktok-scraper").call(run_input={
+        "profiles": [h.lstrip("@") for h in handles],
+        "resultsPerPage": max_posts,
+    })
+    return list(client.dataset(run["defaultDatasetId"]).iterate_items())[:max_posts]
+
+def _run_apify_youtube_sync(handles: list, max_videos: int = 15) -> list:
+    client = ApifyClient(APIFY_API_TOKEN)
+    urls = [{"url": f"https://www.youtube.com/@{h.lstrip('@')}"} for h in handles]
+    run = client.actor("streamers/youtube-scraper").call(run_input={
+        "startUrls": urls,
+        "maxResults": max_videos,
+    })
+    return list(client.dataset(run["defaultDatasetId"]).iterate_items())[:max_videos]
+
+def _run_apify_facebook_sync(handles: list, max_posts: int = 20) -> list:
+    client = ApifyClient(APIFY_API_TOKEN)
+    run = client.actor("apify/facebook-pages-scraper").call(run_input={
+        "startUrls": [{"url": f"https://www.facebook.com/{h.lstrip('@')}"} for h in handles],
+        "maxPosts": max_posts,
+    })
+    return list(client.dataset(run["defaultDatasetId"]).iterate_items())[:max_posts]
+
+async def run_platform_research(platform: str, handles: list, urls: list = None) -> dict:
+    """Scrape the given platform for competitor/reference account posts."""
+    if not APIFY_API_TOKEN or not handles:
+        return {"platform": platform, "posts": [], "skipped": True}
+    loop = asyncio.get_event_loop()
+    try:
+        if platform == "instagram":
+            posts = await loop.run_in_executor(None, _run_apify_instagram_sync, handles, 25)
+        elif platform == "tiktok":
+            posts = await loop.run_in_executor(None, _run_apify_tiktok_sync, handles, 25)
+        elif platform == "youtube":
+            posts = await loop.run_in_executor(None, _run_apify_youtube_sync, handles, 15)
+        elif platform == "facebook":
+            posts = await loop.run_in_executor(None, _run_apify_facebook_sync, handles, 20)
+        else:
+            posts = await loop.run_in_executor(None, _run_apify_instagram_sync, handles, 25)
+        return {"platform": platform, "posts": posts, "handles_scraped": handles}
+    except Exception as e:
+        logging.error("Apify %s research failed: %s", platform, e)
+        return {"platform": platform, "posts": [], "error": str(e)}
+
+def format_research_for_agents(research_data: dict) -> str:
+    """Convert Apify post data into a readable string for agent context."""
+    platform = research_data.get("platform", "unknown")
+    posts    = research_data.get("posts", [])
+    if research_data.get("skipped") or not posts:
+        return f"No live scrape data for {platform}. Research from industry knowledge only."
+    lines = [f"## Live {platform.capitalize()} Data — {len(posts)} recent posts scraped\n"]
+    for p in posts[:20]:
+        handle   = (p.get("ownerUsername") or p.get("authorMeta", {}).get("name", "") or
+                    p.get("pageName", "unknown"))
+        caption  = (p.get("caption") or p.get("text") or p.get("description") or
+                    p.get("title") or "")[:200]
+        likes    = (p.get("likesCount") or p.get("diggCount") or
+                    p.get("statistics", {}).get("likeCount", 0) or 0)
+        views    = (p.get("videoViewCount") or p.get("playCount") or
+                    p.get("statistics", {}).get("viewCount", 0) or 0)
+        url      = p.get("url") or p.get("webVideoUrl") or ""
+        lines.append(f"**@{handle}** — {likes:,} likes · {views:,} views")
+        if caption:
+            lines.append(f"> {caption.strip()}")
+        if url:
+            lines.append(f"[View]({url})")
+        lines.append("")
+    return "\n".join(lines)
+
+# Kiara → Arcads auto-fire bridge
+
+def extract_video_specs_from_kiara(text: str) -> list:
+    """Parse Kiara's output for ```json blocks that are Arcads job specs."""
+    specs = []
+    for m in re.finditer(r'```(?:json)?\s*(\{[\s\S]+?\})\s*```', text):
+        try:
+            spec = json.loads(m.group(1))
+            if "model" in spec and "prompt" in spec:
+                specs.append(spec)
+        except Exception:
+            pass
+    return specs
+
+async def fire_video_jobs(specs: list, client: str, campaign_id: str = "") -> list:
+    """Submit Kiara specs to Arcads, persist in video_jobs table, return arcads IDs."""
+    job_ids = []
+    for spec in specs:
+        try:
+            model = spec.get("model", "kling-3.0")
+            clean = dict(spec)
+            # Normalise Seedance 2.0 — uses resolution not aspectRatio
+            if model == "seedance-2.0" and "aspectRatio" in clean:
+                clean["resolution"] = SEEDANCE2_RESOLUTION_MAP.get(clean.pop("aspectRatio"), "720p")
+            result    = await arcads_generate_video(clean)
+            arcads_id = result.get("id") or result.get("videoId", "")
+            if not arcads_id:
+                continue
+            fmt = clean.get("aspectRatio") or clean.get("resolution") or "9:16"
+            tag = f"[Campaign {campaign_id}] " if campaign_id else ""
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute("""
+                INSERT INTO video_jobs
+                    (id, client, job_type, model, prompt, status, arcads_id, formats)
+                VALUES (?,?,?,?,?,?,?,?)
+            """, (
+                str(uuid.uuid4()), client, "video", model,
+                f"{tag}{clean.get('prompt','')[:400]}",
+                "pending", arcads_id,
+                json.dumps([{"format": fmt, "arcadsId": arcads_id}])
+            ))
+            conn.commit()
+            conn.close()
+            job_ids.append(arcads_id)
+            logging.info("Campaign video job fired: model=%s arcads_id=%s", model, arcads_id)
+        except Exception as e:
+            logging.error("fire_video_jobs spec failed: %s", e)
+    return job_ids
+
+# Campaign pipeline
+
+async def run_campaign(
+    campaign_id: str, client: str, platform: str,
+    duration_days: int, style_brief: str,
+    reference_accounts: list, reference_urls: list, content_mix: dict,
+):
+    def set_step(step: str, msg: str = ""):
+        _campaign_status[campaign_id] = {"step": step, "message": msg}
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute("UPDATE campaigns SET current_step=? WHERE id=?", (f"{step}: {msg}"[:200], campaign_id))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+        logging.info("Campaign %s — %s: %s", campaign_id[:8], step, msg)
+
+    try:
+        # ── Step 1: Research ──────────────────────────────────────
+        set_step("research", f"Zara scraping {platform} competitor data...")
+        research_data  = await run_platform_research(platform, reference_accounts, reference_urls)
+        research_text  = format_research_for_agents(research_data)
+
+        zara_sys   = await fetch_agent("zara")
+        zara_brief = (
+            f"CAMPAIGN RESEARCH REQUEST\n\nClient: {client} | Platform: {platform.upper()} | "
+            f"Duration: {duration_days} days\nStyle: {style_brief}\n"
+            f"Reference accounts: {', '.join(reference_accounts) or 'none specified'}\n\n"
+            f"LIVE DATA SCRAPED:\n{research_text}\n\n"
+            f"Produce a structured research report covering:\n"
+            f"1. Top 5 viral content formats on {platform} right now for this client's industry\n"
+            f"2. Best hook patterns — opening lines that stop the scroll\n"
+            f"3. Optimal posting frequency and best times for {platform}\n"
+            f"4. Content mix recommendation for {duration_days} days "
+            f"(target ~{int(duration_days * content_mix.get('video', 0.3))} videos, "
+            f"~{int(duration_days * content_mix.get('static', 0.5))} static)\n"
+            f"5. Top hashtags and keywords\n6. Key competitor insight\n\n"
+            f"Be specific and actionable. This feeds directly into the content calendar."
+        )
+        zara_analysis = await call_agent(zara_sys, zara_brief, max_tokens=4000)
+
+        # ── Step 2: Calendar plan ─────────────────────────────────
+        set_step("planning", "Marcus building the content calendar...")
+        marcus_sys = await fetch_agent("marcus")
+
+        n_video    = max(1, int(duration_days * content_mix.get("video", 0.3)))
+        n_static   = max(1, int(duration_days * content_mix.get("static", 0.5)))
+        n_carousel = max(0, duration_days - n_video - n_static)
+
+        cal_brief = (
+            f"CAMPAIGN CALENDAR REQUEST\n\nClient: {client} | Platform: {platform.upper()} | "
+            f"{duration_days} days\nStyle: {style_brief}\n"
+            f"Mix: {n_video} videos + {n_static} static posts + {n_carousel} carousels\n\n"
+            f"ZARA RESEARCH:\n{zara_analysis}\n\n"
+            f"Build a complete {duration_days}-day content calendar.\n"
+            f"Output as a JSON array inside a ```json block — one object per day:\n"
+            f'{{"day":1,"content_type":"video|static|carousel","theme":"...","hook":"...","key_message":"...","cta":"...","notes":"..."}}\n\n'
+            f"ALL {duration_days} days must be in the array. No truncation.\n\n"
+            f"Below the JSON, add a Campaign Strategy section with: overall narrative arc, "
+            f"key brand messages, and platform-specific tips for {platform}."
+        )
+        cal_response  = await call_agent(marcus_sys, cal_brief, model="claude-opus-4-6", max_tokens=8000)
+
+        calendar_days = []
+        cal_m = re.search(r'```json\s*(\[[\s\S]+?\])\s*```', cal_response)
+        if cal_m:
+            try:
+                calendar_days = json.loads(cal_m.group(1))
+            except Exception:
+                pass
+        if not calendar_days:
+            # Fall back — create skeleton
+            for d in range(1, duration_days + 1):
+                ct = "video" if d % 3 == 0 else ("carousel" if d % 5 == 0 else "static")
+                calendar_days.append({"day": d, "content_type": ct, "theme": f"Day {d}", "hook": "", "key_message": "", "cta": "", "notes": ""})
+
+        # ── Step 3: Captions + scripts in parallel ────────────────
+        set_step("writing", "Priya writing captions, Dante scripting videos...")
+        priya_sys = await fetch_agent("priya")
+        dante_sys = await fetch_agent("dante")
+
+        video_days = [d for d in calendar_days if d.get("content_type") == "video"]
+
+        priya_msg = (
+            f"Write ALL social captions for this {duration_days}-day {platform} campaign.\n"
+            f"Client: {client} | Style: {style_brief}\n\n"
+            f"CALENDAR:\n{json.dumps(calendar_days, indent=2)}\n\n"
+            f"For every day, output a JSON object: "
+            f'{{"day":N,"caption":"...","hashtags":["..."],"cta":"..."}}\n'
+            f"Return a JSON array of all {duration_days} objects inside a ```json block."
+        )
+        dante_msg = (
+            f"Write video scripts for ALL {len(video_days)} video days in this campaign.\n"
+            f"Client: {client} | Platform: {platform} | Style: {style_brief}\n\n"
+            f"VIDEO DAYS:\n{json.dumps(video_days, indent=2)}\n\n"
+            f"For each video, output: "
+            f'{{"day":N,"hook":"5-8 word opening","script":"15-30 sec script","on_screen_text":"...","visual_direction":"..."}}\n'
+            f"Return a JSON array inside a ```json block."
+        )
+
+        priya_out, dante_out = await asyncio.gather(
+            call_agent(priya_sys, priya_msg, max_tokens=6000),
+            call_agent(dante_sys, dante_msg, max_tokens=6000),
+        )
+
+        captions, scripts = [], []
+        for raw, store in [(priya_out, captions), (dante_out, scripts)]:
+            m = re.search(r'```json\s*(\[[\s\S]+?\])\s*```', raw)
+            if m:
+                try:
+                    store.extend(json.loads(m.group(1)))
+                except Exception:
+                    pass
+
+        # ── Step 4: Kiara video specs ─────────────────────────────
+        set_step("video_specs", f"Kiara building Arcads specs for {len(video_days)} videos...")
+        kiara_sys = await fetch_agent("kiara")
+        kiara_msg = (
+            f"CAMPAIGN VIDEO GENERATION REQUEST\n\n"
+            f"Client: {client} | Platform: {platform}\n"
+            f"Generate Arcads API job specs for ALL {len(video_days)} video slots.\n\n"
+            f"DANTE'S SCRIPTS:\n{json.dumps(scripts, indent=2)}\n\n"
+            f"CALENDAR VIDEO DAYS:\n{json.dumps(video_days, indent=2)}\n\n"
+            f"For EACH video:\n"
+            f"- Write a specific visual prompt (style, motion, mood, on-screen action)\n"
+            f"- Output a complete ```json block: model, prompt, aspectRatio (9:16 for {platform}), duration (10-15s)\n\n"
+            f"Default model: kling-3.0. One ```json block per video. No placeholders."
+        )
+        kiara_out = await call_agent(kiara_sys, kiara_msg, max_tokens=6000)
+
+        # ── Step 5: Auto-fire videos to Arcads ───────────────────
+        video_specs = extract_video_specs_from_kiara(kiara_out)
+        video_job_ids: list = []
+        if video_specs:
+            set_step("generating_videos", f"Submitting {len(video_specs)} jobs to Arcads...")
+            video_job_ids = await fire_video_jobs(video_specs, client, campaign_id)
+
+        # ── Step 6: Assemble calendar ─────────────────────────────
+        set_step("assembling", "Merging all outputs into final calendar...")
+        cap_map = {c.get("day"): c for c in captions if isinstance(c, dict) and "day" in c}
+        scr_map = {s.get("day"): s for s in scripts  if isinstance(s, dict) and "day" in s}
+
+        for day in calendar_days:
+            d = day.get("day")
+            if d in cap_map:
+                day["caption"]  = cap_map[d].get("caption", "")
+                day["hashtags"] = cap_map[d].get("hashtags", [])
+                day["cta"]      = cap_map[d].get("cta", "")
+            if d in scr_map:
+                day["hook"]             = scr_map[d].get("hook", "")
+                day["script"]           = scr_map[d].get("script", "")
+                day["on_screen_text"]   = scr_map[d].get("on_screen_text", "")
+                day["visual_direction"] = scr_map[d].get("visual_direction", "")
+
+        final = {
+            "campaign_id":   campaign_id,
+            "client":        client,
+            "platform":      platform,
+            "duration_days": duration_days,
+            "style":         style_brief,
+            "days":          calendar_days,
+            "strategy_notes": cal_response,
+            "video_job_ids": video_job_ids,
+            "zara_research": zara_analysis,
+            "generated_at":  datetime.now().isoformat(),
+        }
+
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("""
+            UPDATE campaigns
+            SET status='complete', current_step='complete', calendar_json=?, video_job_ids=?
+            WHERE id=?
+        """, (json.dumps(final), json.dumps(video_job_ids), campaign_id))
+        conn.commit()
+        conn.close()
+
+        _campaign_status[campaign_id] = {
+            "step":    "complete",
+            "message": f"{len(calendar_days)} days planned, {len(video_job_ids)} videos queued in Arcads",
+            "calendar": final,
+        }
+
+    except Exception as exc:
+        logging.error("Campaign %s failed: %s\n%s", campaign_id, exc, traceback.format_exc())
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute("UPDATE campaigns SET status='failed', current_step=? WHERE id=?",
+                         (str(exc)[:200], campaign_id))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+        _campaign_status[campaign_id] = {"step": "failed", "message": str(exc)}
+    finally:
+        await asyncio.sleep(7200)
+        _campaign_status.pop(campaign_id, None)
+
+
 # ── GitHub + Anthropic ────────────────────────────────────────────
 
 async def fetch_agent(name: str) -> str:
@@ -1274,7 +1637,9 @@ def _nav(active: str) -> str:
       <a href="/" class="nav-brand">Studio N<span>by Marcus</span></a>
       <div class="nav-links">
         {lnk('/','Brief','brief')}
+        {lnk('/campaign','Campaign','campaign')}
         {lnk('/outputs','Outputs','outputs')}
+        {lnk('/video-studio','Video Studio','studio')}
         <button class="dm-toggle" onclick="toggleDark()" title="Toggle dark mode">
           <svg id="dm-moon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
           <svg id="dm-sun"  width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -2539,6 +2904,469 @@ async def health():
     return {"status": "ok"}
 
 
+# ── Campaign routes ───────────────────────────────────────────────
+
+@app.post("/api/campaign")
+async def campaign_start(request: Request):
+    body          = await request.json()
+    campaign_id   = str(uuid.uuid4())
+    client        = body.get("client", "wibiz")
+    platform      = body.get("platform", "instagram")
+    duration      = int(body.get("duration_days", 30))
+    style         = body.get("style_brief", "")
+    accounts      = body.get("reference_accounts", [])
+    urls          = body.get("reference_urls", [])
+    mix           = body.get("content_mix", {"video": 0.3, "static": 0.5, "carousel": 0.2})
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
+        INSERT INTO campaigns (id, client, platform, duration_days, style_brief, reference_accounts, status)
+        VALUES (?,?,?,?,?,?,'processing')
+    """, (campaign_id, client, platform, duration, style, json.dumps(accounts)))
+    conn.commit()
+    conn.close()
+
+    _campaign_status[campaign_id] = {"step": "starting", "message": "Campaign initialising..."}
+    asyncio.create_task(run_campaign(
+        campaign_id, client, platform, duration, style, accounts, urls, mix
+    ))
+    return {"campaign_id": campaign_id}
+
+@app.get("/api/campaign/{campaign_id}/status")
+async def get_campaign_status(campaign_id: str):
+    cached = _campaign_status.get(campaign_id)
+    if cached:
+        return cached
+    conn = sqlite3.connect(DB_PATH)
+    row  = conn.execute(
+        "SELECT status, current_step, calendar_json, video_job_ids FROM campaigns WHERE id=?",
+        (campaign_id,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    cal = {}
+    try: cal = json.loads(row[2] or "{}")
+    except Exception: pass
+    return {"step": row[0] or "unknown", "message": row[1] or "", "calendar": cal}
+
+@app.get("/api/campaigns")
+async def list_campaigns():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT id, client, platform, duration_days, style_brief, status, current_step, created_at "
+        "FROM campaigns ORDER BY created_at DESC LIMIT 50"
+    ).fetchall()
+    conn.close()
+    return {"campaigns": [dict(r) for r in rows]}
+
+@app.get("/campaign", response_class=HTMLResponse)
+async def campaign_page(request: Request):
+    if not request.session.get("authenticated"):
+        return RedirectResponse("/login", status_code=302)
+    client_options = "".join(
+        f'<option value="{k}"{" selected" if k=="wibiz" else ""}>{v["label"]}</option>'
+        for k, v in CLIENT_META.items() if k != "other"
+    )
+    return HTMLResponse(f"""<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Campaign Planner — Studio N v7.0</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+{_PAGE_STYLE}
+.camp-wrap {{max-width:820px;margin:0 auto;padding:32px 24px 80px;}}
+.camp-form {{background:white;border-radius:14px;padding:28px 32px;box-shadow:0 1px 4px rgba(0,0,0,0.08);margin-bottom:24px;}}
+.camp-title {{font-size:18px;font-weight:800;color:#1e293b;margin-bottom:20px;}}
+.field-row {{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}}
+.field-row-3 {{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px;}}
+.field {{display:flex;flex-direction:column;gap:5px;margin-bottom:16px;}}
+.field-label {{font-size:12px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.04em;}}
+.field-input, .field-select {{border:1px solid #e2e8f0;border-radius:7px;padding:9px 12px;font-size:14px;color:#1e293b;background:white;outline:none;transition:border 0.15s;width:100%;}}
+.field-input:focus, .field-select:focus {{border-color:#6366f1;}}
+.field-textarea {{border:1px solid #e2e8f0;border-radius:7px;padding:9px 12px;font-size:13px;color:#1e293b;background:white;outline:none;width:100%;resize:vertical;min-height:80px;font-family:inherit;}}
+.field-textarea:focus {{border-color:#6366f1;}}
+.platform-grid {{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}}
+.plat-btn {{padding:7px 14px;border-radius:7px;border:1px solid #e2e8f0;background:white;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.15s;color:#475569;}}
+.plat-btn.active {{border-color:#6366f1;background:#eff6ff;color:#4f46e5;}}
+.mix-row {{display:flex;gap:12px;align-items:center;margin-bottom:16px;}}
+.mix-chip {{display:flex;align-items:center;gap:6px;font-size:12px;color:#475569;}}
+.mix-chip input {{width:48px;padding:4px 7px;border:1px solid #e2e8f0;border-radius:5px;font-size:12px;}}
+.btn-launch {{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;border:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;transition:all 0.15s;}}
+.btn-launch:hover {{opacity:0.9;transform:translateY(-1px);}}
+.btn-launch:disabled {{opacity:0.5;cursor:not-allowed;transform:none;}}
+.progress-box {{background:white;border-radius:14px;padding:24px;box-shadow:0 1px 4px rgba(0,0,0,0.08);margin-bottom:24px;display:none;}}
+.progress-title {{font-size:14px;font-weight:700;color:#1e293b;margin-bottom:12px;}}
+.step-list {{display:flex;flex-direction:column;gap:6px;}}
+.step {{display:flex;align-items:center;gap:8px;font-size:13px;color:#64748b;padding:6px 0;}}
+.step.active {{color:#4f46e5;font-weight:600;}}
+.step.done {{color:#16a34a;}}
+.step.failed {{color:#dc2626;}}
+.step-icon {{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;}}
+.step-icon.active {{background:#eff6ff;border:1px solid #6366f1;}}
+.step-icon.done {{background:#dcfce7;color:#16a34a;}}
+.step-icon.failed {{background:#fee2e2;color:#dc2626;}}
+.step-icon.pending {{background:#f8fafc;border:1px solid #e2e8f0;}}
+.spin {{display:inline-block;width:10px;height:10px;border:2px solid #c7d2fe;border-top-color:#4f46e5;border-radius:50%;animation:spin 0.8s linear infinite;}}
+@keyframes spin {{to{{transform:rotate(360deg)}}}}
+.calendar-wrap {{background:white;border-radius:14px;padding:24px;box-shadow:0 1px 4px rgba(0,0,0,0.08);margin-bottom:24px;display:none;}}
+.cal-header {{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}}
+.cal-title {{font-size:16px;font-weight:800;color:#1e293b;}}
+.cal-meta {{font-size:12px;color:#94a3b8;}}
+.cal-actions {{display:flex;gap:8px;}}
+.btn-sm {{font-size:11px;font-weight:600;padding:5px 12px;border-radius:6px;border:1px solid #e2e8f0;background:white;cursor:pointer;color:#475569;}}
+.btn-sm:hover {{background:#f8fafc;}}
+.cal-table {{width:100%;border-collapse:collapse;font-size:12px;}}
+.cal-table th {{padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;border-bottom:2px solid #f1f5f9;}}
+.cal-table td {{padding:9px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top;}}
+.cal-table tr:hover td {{background:#fafbff;}}
+.type-badge {{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;}}
+.type-video   {{background:#dbeafe;color:#1d4ed8;}}
+.type-static  {{background:#dcfce7;color:#16a34a;}}
+.type-carousel {{background:#fef3c7;color:#b45309;}}
+.video-jobs-wrap {{background:white;border-radius:14px;padding:24px;box-shadow:0 1px 4px rgba(0,0,0,0.08);display:none;}}
+.vj-title {{font-size:16px;font-weight:800;color:#1e293b;margin-bottom:14px;}}
+.vj-list {{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;}}
+.vj-card {{border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:12px;}}
+.vj-id {{font-family:monospace;color:#6366f1;font-size:10px;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}
+.past-list {{display:flex;flex-direction:column;gap:8px;}}
+.past-card {{border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:all 0.15s;}}
+.past-card:hover {{border-color:#6366f1;background:#fafbff;}}
+</style>
+</head><body>
+{_nav('campaign')}
+<div class="camp-wrap">
+  <div class="camp-form">
+    <div class="camp-title">Campaign Planner</div>
+    <div class="field-row">
+      <div class="field">
+        <label class="field-label">Client</label>
+        <select class="field-select" id="camp-client">{client_options}</select>
+      </div>
+      <div class="field">
+        <label class="field-label">Duration (days)</label>
+        <select class="field-select" id="camp-duration">
+          <option value="3">3 days</option>
+          <option value="7">7 days</option>
+          <option value="14">14 days</option>
+          <option value="30" selected>30 days</option>
+          <option value="60">60 days</option>
+          <option value="90">90 days</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Platform</label>
+      <div class="platform-grid" id="platform-grid">
+        <button class="plat-btn active" onclick="setPlatform('instagram',this)">Instagram</button>
+        <button class="plat-btn" onclick="setPlatform('tiktok',this)">TikTok</button>
+        <button class="plat-btn" onclick="setPlatform('youtube',this)">YouTube</button>
+        <button class="plat-btn" onclick="setPlatform('facebook',this)">Facebook</button>
+        <button class="plat-btn" onclick="setPlatform('linkedin',this)">LinkedIn</button>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Style Brief</label>
+      <textarea class="field-textarea" id="camp-style" placeholder="Describe the visual style, tone, and feel. E.g. 'Bold and fast-paced like Gymshark, educational hooks, heavy use of text overlays, trending audio'"></textarea>
+    </div>
+    <div class="field">
+      <label class="field-label">Reference Accounts (one per line, with or without @)</label>
+      <textarea class="field-textarea" id="camp-accounts" style="min-height:64px;" placeholder="@competitor1&#10;@inspiration_account&#10;accountname"></textarea>
+    </div>
+    <div class="field">
+      <label class="field-label">Content Mix</label>
+      <div class="mix-row">
+        <div class="mix-chip">Video <input type="number" id="mix-video" value="30" min="0" max="100">%</div>
+        <div class="mix-chip">Static <input type="number" id="mix-static" value="50" min="0" max="100">%</div>
+        <div class="mix-chip">Carousel <input type="number" id="mix-carousel" value="20" min="0" max="100">%</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;">
+      <button class="btn-launch" onclick="launchCampaign()" id="launch-btn">
+        Launch Campaign
+      </button>
+      <span id="launch-hint" style="font-size:12px;color:#94a3b8;">Zara researches → Marcus plans → Priya + Dante write → Kiara fires to Arcads</span>
+    </div>
+  </div>
+
+  <div class="progress-box" id="progress-box">
+    <div class="progress-title" id="progress-title">Running campaign...</div>
+    <div class="step-list" id="step-list">
+      <div class="step" id="st-research"><div class="step-icon pending" id="si-research">·</div><span>Zara — research &amp; competitor scrape</span></div>
+      <div class="step" id="st-planning"><div class="step-icon pending" id="si-planning">·</div><span>Marcus — build content calendar</span></div>
+      <div class="step" id="st-writing"><div class="step-icon pending" id="si-writing">·</div><span>Priya + Dante — captions &amp; scripts (parallel)</span></div>
+      <div class="step" id="st-video_specs"><div class="step-icon pending" id="si-video_specs">·</div><span>Kiara — Arcads video specs</span></div>
+      <div class="step" id="st-generating_videos"><div class="step-icon pending" id="si-generating_videos">·</div><span>Auto-fire video jobs to Arcads</span></div>
+      <div class="step" id="st-assembling"><div class="step-icon pending" id="si-assembling">·</div><span>Assembling final calendar</span></div>
+    </div>
+    <div id="progress-msg" style="margin-top:10px;font-size:12px;color:#6366f1;"></div>
+  </div>
+
+  <div class="calendar-wrap" id="calendar-wrap">
+    <div class="cal-header">
+      <div>
+        <div class="cal-title" id="cal-title">Content Calendar</div>
+        <div class="cal-meta" id="cal-meta"></div>
+      </div>
+      <div class="cal-actions">
+        <button class="btn-sm" onclick="downloadCalendar()">Download JSON</button>
+        <button class="btn-sm" onclick="copyCalendar()">Copy CSV</button>
+      </div>
+    </div>
+    <table class="cal-table">
+      <thead><tr>
+        <th>Day</th><th>Type</th><th>Theme</th><th>Hook</th><th>Caption</th><th>CTA</th>
+      </tr></thead>
+      <tbody id="cal-body"></tbody>
+    </table>
+  </div>
+
+  <div class="video-jobs-wrap" id="vj-wrap">
+    <div class="vj-title">Video Jobs Queued in Arcads</div>
+    <div class="vj-list" id="vj-list"></div>
+    <p style="margin-top:10px;font-size:12px;color:#94a3b8;">These are processing in Arcads now. Check Video Studio for results.</p>
+  </div>
+
+  <div class="camp-form" style="margin-top:24px;">
+    <div class="camp-title" style="font-size:15px;">Past Campaigns</div>
+    <div class="past-list" id="past-list"><div style="font-size:13px;color:#94a3b8;">Loading...</div></div>
+  </div>
+</div>
+
+<script>
+var _platform = 'instagram';
+var _activeCampaignId = null;
+var _poller = null;
+var _calendarData = null;
+
+var STEP_ORDER = ['research','planning','writing','video_specs','generating_videos','assembling','complete'];
+
+function setPlatform(p, btn) {{
+  _platform = p;
+  document.querySelectorAll('.plat-btn').forEach(function(b) {{ b.classList.remove('active'); }});
+  btn.classList.add('active');
+}}
+
+function launchCampaign() {{
+  var style = document.getElementById('camp-style').value.trim();
+  if (!style) {{ alert('Add a style brief first.'); return; }}
+
+  var accountsRaw = document.getElementById('camp-accounts').value.trim();
+  var accounts = accountsRaw ? accountsRaw.split('\\n').map(function(a) {{ return a.trim().replace(/^@/,''); }}).filter(Boolean) : [];
+
+  var mv = parseInt(document.getElementById('mix-video').value) || 30;
+  var ms = parseInt(document.getElementById('mix-static').value) || 50;
+  var mc = parseInt(document.getElementById('mix-carousel').value) || 20;
+  var total = mv + ms + mc;
+
+  var payload = {{
+    client: document.getElementById('camp-client').value,
+    platform: _platform,
+    duration_days: parseInt(document.getElementById('camp-duration').value),
+    style_brief: style,
+    reference_accounts: accounts,
+    reference_urls: [],
+    content_mix: {{
+      video: mv / total,
+      static: ms / total,
+      carousel: mc / total,
+    }},
+  }};
+
+  document.getElementById('launch-btn').disabled = true;
+  document.getElementById('launch-hint').textContent = 'Campaign running — do not navigate away...';
+  document.getElementById('progress-box').style.display = '';
+  document.getElementById('calendar-wrap').style.display = 'none';
+  document.getElementById('vj-wrap').style.display = 'none';
+  resetSteps();
+
+  fetch('/api/campaign', {{
+    method: 'POST',
+    headers: {{'Content-Type':'application/json'}},
+    body: JSON.stringify(payload),
+  }})
+  .then(function(r) {{ return r.json(); }})
+  .then(function(data) {{
+    _activeCampaignId = data.campaign_id;
+    _poller = setInterval(function() {{ pollCampaign(_activeCampaignId); }}, 5000);
+    pollCampaign(_activeCampaignId);
+  }})
+  .catch(function(e) {{
+    alert('Failed to start campaign: ' + e);
+    document.getElementById('launch-btn').disabled = false;
+  }});
+}}
+
+function resetSteps() {{
+  STEP_ORDER.forEach(function(s) {{
+    var si = document.getElementById('si-' + s);
+    var st = document.getElementById('st-' + s);
+    if (si) {{ si.className = 'step-icon pending'; si.textContent = '·'; }}
+    if (st) st.className = 'step';
+  }});
+}}
+
+function markStep(current) {{
+  var idx = STEP_ORDER.indexOf(current);
+  STEP_ORDER.forEach(function(s, i) {{
+    var si = document.getElementById('si-' + s);
+    var st = document.getElementById('st-' + s);
+    if (!si) return;
+    if (i < idx) {{
+      si.className = 'step-icon done'; si.textContent = '✓';
+      if (st) st.className = 'step done';
+    }} else if (i === idx) {{
+      si.className = 'step-icon active'; si.innerHTML = '<span class="spin"></span>';
+      if (st) st.className = 'step active';
+    }} else {{
+      si.className = 'step-icon pending'; si.textContent = '·';
+      if (st) st.className = 'step';
+    }}
+  }});
+}}
+
+function pollCampaign(cid) {{
+  fetch('/api/campaign/' + cid + '/status')
+    .then(function(r) {{ return r.json(); }})
+    .then(function(data) {{
+      var step = data.step || '';
+      var msg  = data.message || '';
+      document.getElementById('progress-msg').textContent = msg;
+      document.getElementById('progress-title').textContent =
+        step === 'complete' ? 'Campaign complete!' :
+        step === 'failed'   ? 'Campaign failed' : 'Running campaign...';
+
+      if (step === 'failed') {{
+        markStep('failed');
+        clearInterval(_poller);
+        document.getElementById('launch-btn').disabled = false;
+        document.getElementById('launch-hint').textContent = 'Campaign failed — check the message above.';
+        return;
+      }}
+
+      markStep(step);
+
+      if (step === 'complete' && data.calendar) {{
+        clearInterval(_poller);
+        document.getElementById('launch-btn').disabled = false;
+        document.getElementById('launch-hint').textContent = 'Campaign complete.';
+        // Mark all steps done
+        STEP_ORDER.forEach(function(s) {{
+          var si = document.getElementById('si-' + s);
+          var st = document.getElementById('st-' + s);
+          if (si) {{ si.className = 'step-icon done'; si.textContent = '✓'; }}
+          if (st) st.className = 'step done';
+        }});
+        renderCalendar(data.calendar);
+        renderVideoJobs(data.calendar.video_job_ids || []);
+        loadPastCampaigns();
+      }}
+    }})
+    .catch(function() {{}});
+}}
+
+function renderCalendar(cal) {{
+  _calendarData = cal;
+  var days = cal.days || [];
+  document.getElementById('cal-title').textContent =
+    (cal.platform || 'Campaign').charAt(0).toUpperCase() + (cal.platform || '').slice(1) + ' Content Calendar';
+  document.getElementById('cal-meta').textContent =
+    days.length + ' days · ' + (cal.client || '') + ' · ' + (cal.style || '');
+
+  var rows = days.map(function(d) {{
+    var typeCls = 'type-' + (d.content_type || 'static');
+    var caption = (d.caption || d.key_message || '').replace(/</g,'&lt;').substring(0,120);
+    return '<tr>' +
+      '<td><strong>' + d.day + '</strong></td>' +
+      '<td><span class="type-badge ' + typeCls + '">' + (d.content_type || '') + '</span></td>' +
+      '<td>' + (d.theme || '').replace(/</g,'&lt;') + '</td>' +
+      '<td style="max-width:160px;">' + (d.hook || '').replace(/</g,'&lt;').substring(0,80) + '</td>' +
+      '<td style="max-width:200px;font-size:11px;">' + caption + '</td>' +
+      '<td style="font-size:11px;">' + (d.cta || '').replace(/</g,'&lt;').substring(0,60) + '</td>' +
+      '</tr>';
+  }}).join('');
+  document.getElementById('cal-body').innerHTML = rows || '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px;">No calendar data</td></tr>';
+  document.getElementById('calendar-wrap').style.display = '';
+}}
+
+function renderVideoJobs(ids) {{
+  if (!ids || !ids.length) return;
+  var html = ids.map(function(id) {{
+    return '<div class="vj-card">' +
+      '<div class="vj-id">' + id + '</div>' +
+      '<div style="font-size:11px;color:#64748b;">Status: pending</div>' +
+      '<a href="/video-studio" style="font-size:11px;color:#6366f1;">View in Video Studio</a>' +
+      '</div>';
+  }}).join('');
+  document.getElementById('vj-list').innerHTML = html;
+  document.getElementById('vj-wrap').style.display = '';
+}}
+
+function downloadCalendar() {{
+  if (!_calendarData) return;
+  var blob = new Blob([JSON.stringify(_calendarData, null, 2)], {{type:'application/json'}});
+  var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'campaign-' + (_calendarData.platform || 'calendar') + '.json'; a.click();
+}}
+
+function copyCalendar() {{
+  if (!_calendarData || !_calendarData.days) return;
+  var rows = [['Day','Type','Theme','Hook','Caption','Hashtags','CTA']];
+  _calendarData.days.forEach(function(d) {{
+    rows.push([
+      d.day, d.content_type || '', d.theme || '', d.hook || '',
+      (d.caption || '').replace(/\\n/g,' '),
+      (d.hashtags || []).join(' '),
+      d.cta || ''
+    ]);
+  }});
+  var csv = rows.map(function(r) {{ return r.map(function(c) {{ return '"' + String(c).replace(/"/g,'""') + '"'; }}).join(','); }}).join('\\n');
+  navigator.clipboard.writeText(csv).then(function() {{ alert('CSV copied to clipboard!'); }});
+}}
+
+function loadPastCampaigns() {{
+  fetch('/api/campaigns')
+    .then(function(r) {{ return r.json(); }})
+    .then(function(data) {{
+      var camps = data.campaigns || [];
+      if (!camps.length) {{
+        document.getElementById('past-list').innerHTML = '<div style="font-size:13px;color:#94a3b8;">No past campaigns yet.</div>';
+        return;
+      }}
+      var html = camps.map(function(c) {{
+        var statusColor = c.status === 'complete' ? '#16a34a' : c.status === 'failed' ? '#dc2626' : '#6366f1';
+        return '<div class="past-card" onclick="loadPastCampaign(\\'' + c.id + '\\'')">' +
+          '<div style="flex:1;">' +
+          '<div style="font-size:13px;font-weight:600;color:#1e293b;">' + (c.platform || '') + ' · ' + (c.duration_days || '') + ' days</div>' +
+          '<div style="font-size:12px;color:#64748b;">' + (c.style_brief || '').substring(0,80) + '</div>' +
+          '<div style="font-size:11px;color:#94a3b8;">' + (c.created_at || '').substring(0,16) + '</div>' +
+          '</div>' +
+          '<span style="font-size:11px;font-weight:700;color:' + statusColor + ';">' + c.status + '</span>' +
+          '</div>';
+      }}).join('');
+      document.getElementById('past-list').innerHTML = html;
+    }})
+    .catch(function() {{}});
+}}
+
+function loadPastCampaign(cid) {{
+  fetch('/api/campaign/' + cid + '/status')
+    .then(function(r) {{ return r.json(); }})
+    .then(function(data) {{
+      if (data.calendar && data.calendar.days) {{
+        document.getElementById('progress-box').style.display = 'none';
+        renderCalendar(data.calendar);
+        renderVideoJobs(data.calendar.video_job_ids || []);
+      }}
+    }});
+}}
+
+// Load past campaigns on page load
+loadPastCampaigns();
+</script>
+</body></html>""")
+
+
 # ── Video Studio ──────────────────────────────────────────────────
 
 @app.get("/video-studio", response_class=HTMLResponse)
@@ -2599,12 +3427,20 @@ async def vs_debug_upload():
         return {"error": str(e)}
 
 @app.get("/api/video-studio/products")
-async def vs_get_products():
+async def vs_get_products(workspace: int = 1):
     try:
-        products = await arcads_get_products()
-        return {"products": products}
+        products = await arcads_get_products(workspace)
+        return {"products": products, "workspace": workspace}
     except Exception as e:
         return JSONResponse({"error": str(e), "products": []}, status_code=200)
+
+@app.get("/api/video-studio/workspaces")
+async def vs_get_workspaces():
+    """Return configured Arcads workspaces so the UI can build a selector."""
+    workspaces = [{"id": 1, "label": "Default", "active": bool(ARCADS_CLIENT_ID)}]
+    if ARCADS_CLIENT_ID_2:
+        workspaces.append({"id": 2, "label": ARCADS_WORKSPACE_2_LABEL, "active": True})
+    return {"workspaces": workspaces}
 
 @app.post("/api/video-studio/generate")
 async def vs_generate(request: Request):

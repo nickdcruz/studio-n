@@ -636,33 +636,72 @@ function toggleDark() {
   if (s) s.style.display = d ? '' : 'none';
 }
 
-// ── Auto-load products ────────────────────────────────────────
-(function loadProducts() {
-  fetch('/api/video-studio/products')
+// ── Workspace selector + product loading ─────────────────────
+var _activeWorkspace = 1;
+
+function loadWorkspaces() {
+  fetch('/api/video-studio/workspaces')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var ws = data.workspaces || [];
+      if (ws.length <= 1) return; // no selector needed if only one workspace
+      var sel = document.createElement('select');
+      sel.id = 'workspace-selector';
+      sel.style.cssText = 'font-size:11px;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);color:white;cursor:pointer;margin-right:8px;';
+      ws.forEach(function(w) {
+        var opt = document.createElement('option');
+        opt.value = w.id;
+        opt.textContent = w.label;
+        sel.appendChild(opt);
+      });
+      sel.onchange = function() { _activeWorkspace = parseInt(sel.value); loadProductsForWorkspace(_activeWorkspace); };
+      // Inject into nav right side
+      var navRight = document.querySelector('.nav-right');
+      if (navRight) navRight.insertBefore(sel, navRight.firstChild);
+    })
+    .catch(function() {});
+}
+
+function loadProductsForWorkspace(workspace) {
+  fetch('/api/video-studio/products?workspace=' + workspace)
     .then(function(r) { return r.json(); })
     .then(function(data) {
       var products = data.products || [];
-      if (!products.length) return;
       var ids = ['gen-product-id', 'mimic-product-id', 'brand-product-id'];
-      ids.forEach(function(id) {
-        var el = document.getElementById(id);
+      ids.forEach(function(inputId) {
+        var el = document.getElementById(inputId);
         if (!el) return;
-        // Replace text input with a select dropdown
-        var sel = document.createElement('select');
-        sel.className = el.className;
-        sel.id = el.id;
-        sel.style.cssText = el.style.cssText;
+        if (el.tagName === 'SELECT') {
+          // Already a select — clear and repopulate
+          while (el.options.length) el.remove(0);
+        } else {
+          // Replace input with select
+          var sel = document.createElement('select');
+          sel.className = el.className;
+          sel.id = el.id;
+          sel.style.cssText = el.style.cssText;
+          el.parentNode.replaceChild(sel, el);
+          el = sel;
+        }
+        if (!products.length) {
+          var opt = document.createElement('option');
+          opt.value = ''; opt.textContent = 'No actors in this workspace';
+          el.appendChild(opt);
+          return;
+        }
         products.forEach(function(p) {
           var opt = document.createElement('option');
           opt.value = p.id;
           opt.textContent = p.name || p.id;
-          sel.appendChild(opt);
+          el.appendChild(opt);
         });
-        el.parentNode.replaceChild(sel, el);
       });
     })
     .catch(function() {}); // silently fail — user can type ID manually
-})();
+}
+
+loadWorkspaces();
+loadProductsForWorkspace(1);
 
 // ── Tab switching ─────────────────────────────────────────────
 function switchTab(name, btn) {

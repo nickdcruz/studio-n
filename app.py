@@ -2265,9 +2265,38 @@ async def stream_job(job_id: str):
 
 # ── Export routes ─────────────────────────────────────────────────
 
+def _load_job_for_export(job_id: str) -> dict | None:
+    """Return job dict from in-memory cache or SQLite fallback."""
+    job = _completed.get(job_id)
+    if job:
+        return job
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute(
+        "SELECT brief, timestamp, marcus_analysis, stage1_outputs, marcus_review, "
+        "cascade_outputs, marcus_cascade_review FROM jobs WHERE id=? AND status='complete'",
+        (job_id,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    brief, ts_str, marcus_analysis, stage1_json, marcus_review, cascade_json, marcus_cascade_review = row
+    try:
+        ts = datetime.fromisoformat(ts_str)
+    except Exception:
+        ts = datetime.utcnow()
+    return {
+        "brief": brief or "",
+        "timestamp": ts,
+        "marcus_analysis": marcus_analysis or "",
+        "stage1_outputs": json.loads(stage1_json or "{}"),
+        "marcus_review": marcus_review or "",
+        "cascade_outputs": json.loads(cascade_json or "{}"),
+        "marcus_cascade_review": marcus_cascade_review or "",
+    }
+
 @app.get("/api/export/{job_id}/{agent}.md")
 async def export_md(job_id: str, agent: str):
-    job = _completed.get(job_id)
+    job = _load_job_for_export(job_id)
     if not job:
         return JSONResponse({"error": "Output not found or expired"}, status_code=404)
     ts = job["timestamp"]
@@ -2290,7 +2319,7 @@ async def export_md(job_id: str, agent: str):
 
 @app.get("/api/export/{job_id}/{agent}/print", response_class=HTMLResponse)
 async def print_export(job_id: str, agent: str):
-    job = _completed.get(job_id)
+    job = _load_job_for_export(job_id)
     if not job:
         return HTMLResponse("<h1>Output not found or expired</h1>", status_code=404)
     ts = job["timestamp"].strftime("%Y-%m-%d %H:%M")

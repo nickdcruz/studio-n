@@ -298,6 +298,15 @@ SEEDANCE2_RESOLUTION_MAP: dict = {
     "1:1":  "720p", "4:3":  "720p",
 }
 
+# Per-model duration limits (seconds). None = no hard limit enforced by Arcads.
+MODEL_DURATION_LIMITS: dict = {
+    "kling-3.0":    (3, 15),
+    "seedance-2.0": (3, 10),
+    "sora2":        (1, 20),
+    "veo31":        (1, 8),
+    "grok-video":   (1, 30),
+}
+
 THIRD_PARTY_MESSAGES = {
     "video_production": (
         "Dante's video concept is saved and ready. Production requires Canva, CapCut, or Adobe Premiere — "
@@ -3476,7 +3485,16 @@ async def vs_generate(request: Request):
                         payload["aspectRatio"] = fmt
                 if duration and str(duration) not in ("0", "auto", "none", "null"):
                     try:
-                        payload["duration"] = int(duration)
+                        dur = int(duration)
+                        limits = MODEL_DURATION_LIMITS.get(model)
+                        if limits:
+                            lo, hi = limits
+                            if not (lo <= dur <= hi):
+                                return JSONResponse(
+                                    {"error": f"{model} duration must be {lo}–{hi}s (you sent {dur}s)"},
+                                    status_code=400
+                                )
+                        payload["duration"] = dur
                     except (ValueError, TypeError):
                         pass
 

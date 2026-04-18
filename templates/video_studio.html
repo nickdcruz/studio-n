@@ -636,34 +636,9 @@ function toggleDark() {
   if (s) s.style.display = d ? '' : 'none';
 }
 
-// ── Workspace selector + product loading ─────────────────────
-var _activeWorkspace = 1;
-
-function loadWorkspaces() {
-  fetch('/api/video-studio/workspaces')
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      var ws = data.workspaces || [];
-      if (ws.length <= 1) return; // no selector needed if only one workspace
-      var sel = document.createElement('select');
-      sel.id = 'workspace-selector';
-      sel.style.cssText = 'font-size:11px;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);color:white;cursor:pointer;margin-right:8px;';
-      ws.forEach(function(w) {
-        var opt = document.createElement('option');
-        opt.value = w.id;
-        opt.textContent = w.label;
-        sel.appendChild(opt);
-      });
-      sel.onchange = function() { _activeWorkspace = parseInt(sel.value); loadProductsForWorkspace(_activeWorkspace); };
-      // Inject into nav right side
-      var navRight = document.querySelector('.nav-right');
-      if (navRight) navRight.insertBefore(sel, navRight.firstChild);
-    })
-    .catch(function() {});
-}
-
-function loadProductsForWorkspace(workspace) {
-  fetch('/api/video-studio/products?workspace=' + workspace)
+// ── Product loading ───────────────────────────────────────────
+function loadProducts() {
+  fetch('/api/video-studio/products')
     .then(function(r) { return r.json(); })
     .then(function(data) {
       var products = data.products || [];
@@ -671,11 +646,7 @@ function loadProductsForWorkspace(workspace) {
       ids.forEach(function(inputId) {
         var el = document.getElementById(inputId);
         if (!el) return;
-        if (el.tagName === 'SELECT') {
-          // Already a select — clear and repopulate
-          while (el.options.length) el.remove(0);
-        } else {
-          // Replace input with select
+        if (el.tagName !== 'SELECT') {
           var sel = document.createElement('select');
           sel.className = el.className;
           sel.id = el.id;
@@ -683,9 +654,10 @@ function loadProductsForWorkspace(workspace) {
           el.parentNode.replaceChild(sel, el);
           el = sel;
         }
+        while (el.options.length) el.remove(0);
         if (!products.length) {
           var opt = document.createElement('option');
-          opt.value = ''; opt.textContent = 'No actors in this workspace';
+          opt.value = ''; opt.textContent = 'No actors configured';
           el.appendChild(opt);
           return;
         }
@@ -700,8 +672,7 @@ function loadProductsForWorkspace(workspace) {
     .catch(function() {}); // silently fail — user can type ID manually
 }
 
-loadWorkspaces();
-loadProductsForWorkspace(1);
+loadProducts();
 
 // ── Tab switching ─────────────────────────────────────────────
 function switchTab(name, btn) {

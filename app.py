@@ -175,10 +175,6 @@ ARCADS_CLIENT_ID      = os.getenv("ARCADS_CLIENT_ID", os.getenv("ARCADS_API_KEY"
 ARCADS_CLIENT_SECRET  = os.getenv("ARCADS_CLIENT_SECRET", "")
 ARCADS_BASE_URL       = os.getenv("ARCADS_BASE_URL", "https://external-api.arcads.ai")
 ARCADS_CREDIT_BUDGET  = float(os.getenv("ARCADS_CREDIT_BUDGET", "200"))
-# Second Arcads workspace (e.g. WiBiz workspace — set these in Railway)
-ARCADS_CLIENT_ID_2    = os.getenv("ARCADS_CLIENT_ID_2", "")
-ARCADS_CLIENT_SECRET_2 = os.getenv("ARCADS_CLIENT_SECRET_2", "")
-ARCADS_WORKSPACE_2_LABEL = os.getenv("ARCADS_WORKSPACE_2_LABEL", "WiBiz")
 HTTP_USER            = os.getenv("HTTP_USER", "admin")
 HTTP_PASS           = os.getenv("HTTP_PASS", "changeme")
 SESSION_SECRET      = os.getenv("SESSION_SECRET", secrets.token_hex(32))
@@ -189,20 +185,17 @@ anthropic_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
 # ── Arcads API helpers ────────────────────────────────────────────
 
-def _arcads_headers(workspace: int = 1):
+def _arcads_headers():
     import base64
-    if workspace == 2 and ARCADS_CLIENT_ID_2:
-        creds = base64.b64encode(f"{ARCADS_CLIENT_ID_2}:{ARCADS_CLIENT_SECRET_2}".encode()).decode()
-    else:
-        creds = base64.b64encode(f"{ARCADS_CLIENT_ID}:{ARCADS_CLIENT_SECRET}".encode()).decode()
+    creds = base64.b64encode(f"{ARCADS_CLIENT_ID}:{ARCADS_CLIENT_SECRET}".encode()).decode()
     return {"Authorization": f"Basic {creds}", "Content-Type": "application/json"}
 
-async def arcads_get_products(workspace: int = 1) -> list:
+async def arcads_get_products() -> list:
     if not ARCADS_CLIENT_ID:
         return []
     async with httpx.AsyncClient() as client:
         r = await client.get(f"{ARCADS_BASE_URL}/v1/products",
-                             headers=_arcads_headers(workspace), timeout=15)
+                             headers=_arcads_headers(), timeout=15)
         r.raise_for_status()
         data = r.json()
         if isinstance(data, list):
@@ -3427,20 +3420,12 @@ async def vs_debug_upload():
         return {"error": str(e)}
 
 @app.get("/api/video-studio/products")
-async def vs_get_products(workspace: int = 1):
+async def vs_get_products():
     try:
-        products = await arcads_get_products(workspace)
-        return {"products": products, "workspace": workspace}
+        products = await arcads_get_products()
+        return {"products": products}
     except Exception as e:
         return JSONResponse({"error": str(e), "products": []}, status_code=200)
-
-@app.get("/api/video-studio/workspaces")
-async def vs_get_workspaces():
-    """Return configured Arcads workspaces so the UI can build a selector."""
-    workspaces = [{"id": 1, "label": "Default", "active": bool(ARCADS_CLIENT_ID)}]
-    if ARCADS_CLIENT_ID_2:
-        workspaces.append({"id": 2, "label": ARCADS_WORKSPACE_2_LABEL, "active": True})
-    return {"workspaces": workspaces}
 
 @app.post("/api/video-studio/generate")
 async def vs_generate(request: Request):

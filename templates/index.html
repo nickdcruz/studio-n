@@ -1341,14 +1341,18 @@ async function submitBrief() {
     document.getElementById('file-input').value = '';
 
     const src = new EventSource(`/api/stream/${job_id}`);
+    let streamDone = false;
     src.onmessage = e => {
       handleEvent(e);
       const ev = JSON.parse(e.data);
-      if (ev.type === 'done' || ev.type === 'error') src.close();
+      if (ev.type === 'done' || ev.type === 'error') { streamDone = true; src.close(); }
     };
     src.onerror = () => {
-      document.getElementById('status-text').textContent = 'Connection lost. Please try again.';
-      btn.disabled = false; src.close();
+      src.close();
+      if (streamDone) { btn.disabled = false; return; }
+      document.getElementById('status-text').innerHTML =
+        'Live stream disconnected. Your job is still running in the background — <a href="/outputs" style="color:#10b981;text-decoration:underline;">open the Outputs page</a> to watch it finish.';
+      btn.disabled = false;
     };
   } catch(err) {
     document.getElementById('status-text').textContent = 'Error: ' + err.message;
